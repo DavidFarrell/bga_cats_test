@@ -50,3 +50,8 @@ sftp-config.json
 # Mount scripts with credentials
 mount_bga.sh
 unmount_bga.sh
+mount_example_games.sh
+unmount_example_games.sh
+
+# Example games folder (reference only, not our code)
+example_games/
