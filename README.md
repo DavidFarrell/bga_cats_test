@@ -46,6 +46,88 @@ This repository contains comprehensive documentation for implementing Herding Ca
 2. SFTP client for file deployment
 3. Basic knowledge of PHP, JavaScript, HTML/CSS
 4. Familiarity with BGA framework
+5. macFUSE and SSHFS installed (for development workflow)
+
+## 📁 Development Workflow
+
+### Overview
+This project uses a **deploy script workflow** that allows you to:
+- Keep all code in Git with full version control
+- Work locally with your favorite editor
+- Deploy changes to BGA Studio for testing
+- Maintain a clear separation between local development and BGA deployment
+
+### Directory Structure
+```
+bga_cats_test/
+├── src/                    # Your version-controlled BGA code
+│   ├── herdingcats.js     # Client-side JavaScript
+│   ├── herdingcats.css    # Styles
+│   ├── dbmodel.sql        # Database schema
+│   ├── gameinfos.inc.php  # Game metadata
+│   ├── states.inc.php     # State machine
+│   ├── modules/           # Server-side PHP
+│   └── img/               # Game images
+├── mount_bga.sh           # Mount BGA to ~/BGA_mount
+├── unmount_bga.sh         # Unmount BGA
+├── pull.sh                # Pull files from BGA → src/
+├── deploy.sh              # Push files from src/ → BGA
+└── sync_status.sh         # Check sync status
+```
+
+### Workflow Steps
+
+#### 1. Initial Setup (One Time)
+```bash
+# Mount the BGA folder
+./mount_bga.sh
+
+# Pull existing files from BGA to your src/ directory
+./pull.sh
+
+# Unmount when done
+./unmount_bga.sh
+```
+
+#### 2. Daily Development Workflow
+```bash
+# Mount BGA at start of work session
+./mount_bga.sh
+
+# Work on files in src/ directory
+# Edit with your favorite editor
+# Use Git to track changes
+
+# Deploy changes to BGA for testing
+./deploy.sh
+
+# Or use auto-deploy (watches for changes)
+./deploy.sh --watch
+
+# Test on BGA Studio website
+# Make fixes, deploy again as needed
+
+# Commit your changes to Git
+git add src/
+git commit -m "Implement cat herding logic"
+
+# Unmount when done
+./unmount_bga.sh
+```
+
+### Key Points
+- **Always work in `src/` directory** - This is your version-controlled code
+- **Mount location** - BGA files mount to `~/BGA_mount` (outside the repo)
+- **Deploy to test** - Run `./deploy.sh` to sync your changes to BGA
+- **Version control** - All code in `src/` is tracked in Git
+- **Auto-deploy option** - Use `./deploy.sh --watch` for automatic sync on save
+
+### Benefits
+✅ Full version control of all game code  
+✅ Work offline with local files  
+✅ Easy rollback and branch management  
+✅ Clear separation of local vs deployed code  
+✅ Can review changes before deploying  
 
 ### Project Structure
 ```
@@ -156,22 +238,19 @@ See [`implementation_progress.md`](implementation_progress.md) for detailed chec
 
 ## 📜 License & Credits
 
+### Creative Direction
+- **Designer:** David Farrell
+
 ### Game Design
-- **Designer:** GOSH Digital
-- **Rules Specification:** David Farrell
+- **Designer:** Col Anderson, Ross Anderson
 
 ### Artwork
-- **Artist:** GOSH Digital
+- **Artist:** Kris Tsenova
 - **Card Images:** Located in `/herding_cats_art/`
 
 ### Development
 - **BGA Implementation:** In Progress
 - **Repository:** https://github.com/DavidFarrell/bga_cats_test
-
-## 🐛 Known Issues
-
-- Image file needs renaming: `lasterpointer.jpeg` → `laserpointer.jpeg`
-- Implementation not yet started on BGA Studio
 
 ## 📞 Contact
 

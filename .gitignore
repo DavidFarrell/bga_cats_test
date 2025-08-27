@@ -46,3 +46,7 @@ sftp-config.json
 .env.development
 .env.test
 *.env
+
+# Mount scripts with credentials
+mount_bga.sh
+unmount_bga.sh
