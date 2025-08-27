@@ -42,3 +42,7 @@ sftp-config.json
 # Environment files (might contain SFTP credentials)
 .env
 .env.local
+.env.production
+.env.development
+.env.test
+*.env
