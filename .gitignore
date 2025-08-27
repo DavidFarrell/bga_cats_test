@@ -19,3 +19,26 @@ ehthumbs_vista.db
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
+
+# BGA Studio specific
+sftp-config.json
+.vscode/sftp.json
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.bak
+*~
+
+# BGA Workbench (if using)
+.bgawb/
+
+# Environment files (might contain SFTP credentials)
+.env
+.env.local
