@@ -123,33 +123,14 @@ function (dojo, declare) {
             if (gamedatas.hand) {
                 // gamedatas.hand may be an object keyed by string ids or an array; support both
                 const list = Array.isArray(gamedatas.hand) ? gamedatas.hand : Object.values(gamedatas.hand);
-                let added = 0;
                 list.forEach(card => {
                     // Normalize id and type fields coming from PHP
                     const cid = parseInt(card.id ?? card.card_id);
                     const ctype = parseInt(card.type ?? card.card_type);
                     if (!isNaN(cid) && !isNaN(ctype)) {
                         this.playerHand.addToStockWithId(ctype, cid);
-                        added++;
                     }
                 });
-                try {
-                    this.ajaxcall("/herdingcats/herdingcats/actClientLog.html", { level: 'info', msg: 'HandAdded'+added, lock: true }, this, ()=>{}, ()=>{});
-                } catch(e) {}
-
-                // Diagnostic fallback: force background on stockitems explicitly
-                setTimeout(() => {
-                    const base = g_gamethemeurl;
-                    dojo.query('#hc_current_hand .stockitem').forEach((el, idx) => {
-                        const c = list[idx];
-                        const t = parseInt(c?.type ?? c?.card_type);
-                        if (t && typeToImg[t]) {
-                            el.style.backgroundImage = 'url(' + base + typeToImg[t] + ')';
-                            el.style.backgroundSize = 'cover';
-                            el.style.backgroundPosition = 'center';
-                        }
-                    });
-                }, 0);
             }
         },
 
@@ -702,17 +683,6 @@ function (dojo, declare) {
 
             // Set notification durations
             this.notifqueue.setSynchronousDuration(500);
-
-            // Send a test client log to server for debugging
-            try {
-                // Quick diagnostics for asset path
-                const testUrl = g_gamethemeurl + 'img/herding_cats_art/kitten.jpeg';
-                this.ajaxcall("/herdingcats/herdingcats/actClientLog.html", { level: 'info', msg: 'ThemeURLOk', lock: true }, this, ()=>{}, ()=>{});
-                const img = new Image();
-                img.onload = () => this.ajaxcall("/herdingcats/herdingcats/actClientLog.html", { level: 'info', msg: 'ImgLoadOk', lock: true }, this, ()=>{}, ()=>{});
-                img.onerror = () => this.ajaxcall("/herdingcats/herdingcats/actClientLog.html", { level: 'error', msg: 'ImgLoadError', lock: true }, this, ()=>{}, ()=>{});
-                img.src = testUrl;
-            } catch(e) { console.warn('client log failed', e); }
         },  
         
         // Notification handlers
