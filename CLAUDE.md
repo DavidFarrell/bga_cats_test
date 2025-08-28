@@ -75,3 +75,73 @@ We use a **deploy script workflow** to maintain version control while developing
 - `./unmount_bga.sh` - Unmount when done
 
 This workflow ensures all game code stays in version control while still being able to test on BGA Studio.
+
+## Accessing Board Game Arena Studio
+
+### Login Instructions
+
+To test the game on BGA Studio:
+
+1. **Navigate to the game table URL:**
+   - URL: `https://studio.boardgamearena.com/1/herdingcats?table=762633`
+   - Or go to any BGA Studio game table link provided
+
+2. **Login with the test account:**
+   - Username: `PaidiaGames0`
+   - Password: Found in the `.env` file in the project root
+   - Note: The `.env` file contains sensitive credentials and is not tracked in git
+
+3. **Switching between players:**
+   - Click the red ">" arrow (appears as "see more") next to a player's name
+   - This opens that player's view in a new tab
+   - Useful for testing multiplayer functionality from different perspectives
+   - You can also access a spectator view if available
+
+4. **Game Interface Features:**
+   - The active player's tab shows "◥" in the title
+   - "It's your turn!" notification appears for the active player
+   - Developer tools are available in the left sidebar (database access, logs, save/restore states)
+
+## Playwright Testing Guide
+
+### IMPORTANT: Playwright Version
+**Always use the regular `mcp__playwright__` tools, NOT the `mcp__playwright-ext__` version.**
+The regular playwright tools are more stable for BGA Studio testing.
+
+### Examining Game Cards
+
+1. **Card Elements Structure:**
+   - Cards in hand are stored as divs with IDs like `hc_current_hand_item_100`, `hc_current_hand_item_101`, etc.
+   - Each card has a background image that identifies its type (e.g., `kitten.jpeg`, `catnip.jpeg`)
+   - Cards are positioned using inline styles with `top` and `left` properties
+
+2. **Finding Cards via JavaScript:**
+   ```javascript
+   // Get all cards and their types
+   const cards = [];
+   for (let i = 100; i <= 106; i++) {
+     const card = document.getElementById(`hc_current_hand_item_${i}`);
+     if (card) {
+       const bgImage = window.getComputedStyle(card).backgroundImage;
+       cards.push({
+         id: card.id,
+         type: bgImage.match(/\/([^\/]+)\.jpeg/)?.[1] // Extract card type from image URL
+       });
+     }
+   }
+   ```
+
+3. **Interacting with Cards:**
+   - Clicking a card triggers a declaration dialog
+   - The dialog shows buttons for each card type (Kitten, Show Cat, Alley Cat, Catnip, Animal Control, Laser Pointer)
+   - After selecting a card and declaration type, the game processes the move
+
+4. **Game State Information:**
+   - Access game state via `window.gameui` object
+   - `window.gameui.playerHand.items` contains the current player's hand
+   - Card types are numbered: 1=Kitten, 2=Show Cat, 3=Alley Cat, 4=Catnip, 5=Animal Control, 6=Laser Pointer
+
+5. **Monitoring Game Flow:**
+   - Console logs show state transitions (e.g., "Entering state: awaitDeclaration")
+   - Network requests in Input/Output section show game actions
+   - Game notifications appear for actions like "cardPlayed" and "herdUpdate"

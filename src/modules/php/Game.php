@@ -21,6 +21,10 @@ namespace Bga\Games\HerdingCats;
 class Game extends \Bga\GameFramework\Table
 {
     private static array $CARD_TYPES;
+    private const G_PENDING_CARD = 'g_pending_card';
+    private const G_PENDING_DECL = 'g_pending_decl';
+    private const G_TARGET_PLAYER = 'g_target_player';
+    private const G_TARGET_ZONE = 'g_target_zone'; // 1 = hand, 2 = herd
 
     /**
      * Your global variables labels:
@@ -36,9 +40,11 @@ class Game extends \Bga\GameFramework\Table
         parent::__construct();
 
         $this->initGameStateLabels([
-            "my_first_global_variable" => 10,
-            "my_second_global_variable" => 11,
-        ]);        
+            self::G_PENDING_CARD => 10,
+            self::G_PENDING_DECL => 11,
+            self::G_TARGET_PLAYER => 12,
+            self::G_TARGET_ZONE => 13,
+        ]);
 
         self::$CARD_TYPES = [
             1 => [
@@ -303,8 +309,26 @@ class Game extends \Bga\GameFramework\Table
 
     public function argChallengeWindow(): array
     {
+        // All non-active players are eligible to challenge
+        $active = (int) $this->getActivePlayerId();
+        $players = $this->getCollectionFromDb("SELECT `player_id` `id`, `player_name` FROM `player`");
+        $eligible = [];
+        foreach ($players as $p) {
+            $pid = (int)$p['id'];
+            if ($pid !== $active) {
+                $eligible[] = $pid;
+            }
+        }
+
+        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
         return [
-            'eligible' => [],
+            'eligible' => $eligible,
+            'eligible_challengers' => $eligible,
+            'can_challenge' => $eligible,
+            'actor_id' => $active,
+            'actor_name' => $this->getPlayerNameById($active),
+            'acting_player_name' => $this->getPlayerNameById($active),
+            'declared_card' => $decl,
         ];
     }
 
@@ -318,14 +342,7 @@ class Game extends \Bga\GameFramework\Table
         return [];
     }
 
-    public function argSelectTarget(): array
-    {
-        // Allow skipping targeting in this placeholder implementation
-        return [
-            'valid_targets' => [],
-            'canSkip' => true,
-        ];
-    }
+    // removed placeholder argSelectTarget (see the fully implemented version below)
 
     // =====================
     // Minimal action flow  
@@ -359,8 +376,190 @@ class Game extends \Bga\GameFramework\Table
             'visible' => false,
         ]);
 
-        // Advance via state machine to avoid changing active player within activeplayer state
+        // Store pending declaration info for downstream states
+        $this->setGameStateValue(self::G_PENDING_CARD, $card_id);
+        $this->setGameStateValue(self::G_PENDING_DECL, $decl);
+        $this->setGameStateValue(self::G_TARGET_PLAYER, 0);
+        $this->setGameStateValue(self::G_TARGET_ZONE, 0);
+
+        // Advance to challenge window
         $this->gamestate->nextState('declared');
+    }
+
+    public function stEnterChallengeWindow(): void
+    {
+        // Set all non-active players as multiactive challengers
+        $active = (int) $this->getActivePlayerId();
+        $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+        $eligible = [];
+        foreach ($players as $p) {
+            $pid = (int)$p['id'];
+            if ($pid !== $active) {
+                $eligible[] = $pid;
+            }
+        }
+        if (!empty($eligible)) {
+            $this->gamestate->setPlayersMultiactive($eligible, 'unchallenged', true);
+        } else {
+            // No challengers possible
+            $this->gamestate->nextState('unchallenged');
+        }
+    }
+
+    public function actChallenge(): void
+    {
+        // First challenger triggers the challenged transition
+        $this->checkAction('actChallenge');
+        $player_id = (int)$this->getActivePlayerId(); // active is actor; challengers are multiactive
+        $this->gamestate->setAllPlayersNonMultiactive('challenged');
+    }
+
+    public function actPassChallenge(): void
+    {
+        $this->checkAction('actPassChallenge');
+        $pid = (int)$this->getCurrentPlayerId();
+        $this->gamestate->setPlayerNonMultiactive($pid, 'unchallenged');
+    }
+
+    // =====================
+    // Target selection phase
+    // =====================
+
+    private function requiresTarget(int $declType): bool
+    {
+        // 1=Kitten, 2=ShowCat, 3=AlleyCat, 4=Catnip, 5=AnimalControl, 6=LaserPointer
+        // Non-targeting: Kitten, Show Cat, Laser Pointer
+        return in_array($declType, [3, 4, 5], true);
+    }
+
+    private function zoneCodeFromString(string $zone): int
+    {
+        return $zone === 'herd' ? 2 : 1; // default to hand=1
+    }
+
+    public function stEnterSelectTarget(): void
+    {
+        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        if (!$this->requiresTarget($decl)) {
+            $this->gamestate->nextState('noTargeting');
+        }
+        // otherwise, wait for player action
+    }
+
+    // =====================
+    // Minimal state resolvers so flow proceeds
+    // =====================
+
+    public function stResolveChallenge(): void
+    {
+        // Minimal: proceed directly to target selection
+        $this->gamestate->nextState('goToTarget');
+    }
+
+    public function stResolveInterceptChallenge(): void
+    {
+        // Minimal: proceed to reveal/resolve
+        $this->gamestate->nextState('interceptGoToResolve');
+    }
+
+    public function stRevealAndResolve(): void
+    {
+        // Minimal: skip effect resolution details for now
+        $this->gamestate->nextState('effectResolved');
+    }
+
+    public function stAddPlayedCardToHerd(): void
+    {
+        // Minimal: already notified a visual herd update at declare time
+        $this->gamestate->nextState('cardAdded');
+    }
+
+    public function argSelectTarget(): array
+    {
+        $active = (int)$this->getActivePlayerId();
+        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+
+        if (!$this->requiresTarget($decl)) {
+            return [
+                'valid_targets' => [],
+                'canSkip' => true,
+                'declared_card' => $decl,
+                'acting_player_id' => $active,
+                'acting_player_name' => $this->getPlayerNameById($active),
+            ];
+        }
+
+        $players = $this->getCollectionFromDb("SELECT `player_id` `id`, `player_name` `name` FROM `player`");
+        $targets = [];
+
+        foreach ($players as $p) {
+            $pid = (int)$p['id'];
+            $pname = $p['name'];
+
+            if ($decl === 2) { // Show Cat: target own herd (placeholder)
+                if ($pid === $active) {
+                    $targets[] = [
+                        'id' => $pid,
+                        'player_id' => $pid,
+                        'zone' => 'herd',
+                        'name' => $pname . ' (Herd)'
+                    ];
+                }
+                continue;
+            }
+
+            if ($pid === $active) continue; // other cards target opponents
+
+            if (in_array($decl, [3, 4], true)) {
+                // Alley Cat / Catnip: target opponent hand (blind)
+                $targets[] = [
+                    'id' => $pid,
+                    'player_id' => $pid,
+                    'zone' => 'hand',
+                    'name' => $pname . ' (Hand)'
+                ];
+            } elseif ($decl === 5) {
+                // Animal Control: target opponent herd
+                $targets[] = [
+                    'id' => $pid,
+                    'player_id' => $pid,
+                    'zone' => 'herd',
+                    'name' => $pname . ' (Herd)'
+                ];
+            }
+        }
+
+        return [
+            'valid_targets' => $targets,
+            'canSkip' => false,
+            'declared_card' => $decl,
+            'acting_player_id' => $active,
+            'acting_player_name' => $this->getPlayerNameById($active),
+        ];
+    }
+
+    public function actSelectTargetSlot(int $slot_id, string $zone): void
+    {
+        $this->checkAction('actSelectTargetSlot');
+        $active = (int)$this->getActivePlayerId();
+        $this->setGameStateValue(self::G_TARGET_PLAYER, $slot_id);
+        $this->setGameStateValue(self::G_TARGET_ZONE, $this->zoneCodeFromString($zone));
+
+        // Notify minimal selection (optional)
+        $this->notify->all('targetSelected', clienttranslate('${player_name} selected a target'), [
+            'player_id' => $active,
+            'player_name' => $this->getPlayerNameById($active),
+            'target_player_id' => $slot_id,
+            'target_zone' => $zone,
+        ]);
+
+        $this->gamestate->nextState('targetSelected');
+    }
+
+    public function actSkipTargeting(): void
+    {
+        $this->checkAction('actSkipTargeting');
+        $this->gamestate->nextState('noTargeting');
     }
 
     // Minimal end turn handler to rotate to next player
@@ -370,11 +569,7 @@ class Game extends \Bga\GameFramework\Table
         $this->gamestate->nextState('nextPlayer');
     }
 
-    public function actSkipTargeting(): void
-    {
-        // Minimal: ignore targeting and continue
-        $this->gamestate->nextState('noTargeting');
-    }
+    // removed duplicate actSkipTargeting()
 
     public function argInterceptDeclare(): array
     {
@@ -431,8 +626,11 @@ class Game extends \Bga\GameFramework\Table
 
         // Init global values with their initial values.
 
-        // Dummy content.
-        $this->setGameStateInitialValue("my_first_global_variable", 0);
+        // Initialize our pending/target labels
+        $this->setGameStateInitialValue(self::G_PENDING_CARD, 0);
+        $this->setGameStateInitialValue(self::G_PENDING_DECL, 0);
+        $this->setGameStateInitialValue(self::G_TARGET_PLAYER, 0);
+        $this->setGameStateInitialValue(self::G_TARGET_ZONE, 0);
 
         // Init game statistics.
         //

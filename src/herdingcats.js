@@ -286,9 +286,14 @@ function (dojo, declare) {
         },
 
         onEnteringState_challengeWindow: function(args) {
-            if (this.isCurrentPlayerActive()) {
-                // Show challenge options for eligible players
-                this.updateActionPrompts('challengeWindow', args);
+            // Show challenge options for eligible players
+            this.updateActionPrompts('challengeWindow', args);
+            
+            // Check if current player can challenge
+            if (args && args.eligible_challengers && args.eligible_challengers.includes(parseInt(this.player_id))) {
+                // Add challenge buttons for eligible players
+                this.addActionButton('challenge_btn', _('Challenge'), 'onChallenge');
+                this.addActionButton('pass_challenge_btn', _('Pass'), 'onPassChallenge', null, false, 'gray');
             }
         },
 
@@ -338,6 +343,7 @@ function (dojo, declare) {
                 case 'challengeWindow':
                 case 'interceptChallengeWindow':
                     // Clear challenge UI
+                    dojo.query('#challenge_btn, #pass_challenge_btn').forEach(dojo.destroy);
                     break;
             }               
         }, 
@@ -358,8 +364,7 @@ function (dojo, declare) {
                         break;
                         
                     case 'challengeWindow':
-                        this.addActionButton('challenge_btn', _('Challenge'), 'onChallenge');
-                        this.addActionButton('pass_challenge_btn', _('Pass'), 'onPassChallenge', null, false, 'gray');
+                        // Challenge buttons are handled in onEnteringState_challengeWindow
                         break;
                         
                     case 'interceptDeclare':
@@ -531,11 +536,22 @@ function (dojo, declare) {
             
             if (selection.length > 0) {
                 const cardId = selection[0].id;
+                const cardType = selection[0].type; // Get the actual card type from the stock item
                 this.selectedCard = cardId; // cache selection so we can send it later
                 
-                // Show declaration dialog
+                // Skip dialog and directly play the card with its actual type
                 if (this.gamedatas.gamestate && this.gamedatas.gamestate.name === 'awaitDeclaration') {
-                    this.showDeclarationDialog(cardId);
+                    // Directly send declaration to server using actual card type
+                    this.ajaxcall("/herdingcats/herdingcats/actDeclare.html", {
+                        card_id: parseInt(cardId),
+                        declared_type: parseInt(cardType), // Use actual card type (no bluffing)
+                        lock: true
+                    }, this, function(result) {
+                        // Success handled by notification
+                    }, function(is_error) {
+                        // Error handling
+                        console.error('Declaration failed', is_error);
+                    });
                 }
             }
         },
@@ -581,9 +597,18 @@ function (dojo, declare) {
         },
 
         onChallenge: function() {
-            this.ajaxcall("/herdingcats/herdingcats/actChallenge.html", {
-                lock: true
-            }, this, function(result) {
+            // Get the actor_id from game state args if available
+            let actorId = null;
+            if (this.gamedatas.gamestate && this.gamedatas.gamestate.args && this.gamedatas.gamestate.args.actor_id) {
+                actorId = this.gamedatas.gamestate.args.actor_id;
+            }
+            
+            const params = { lock: true };
+            if (actorId) {
+                params.actor_id = actorId;
+            }
+            
+            this.ajaxcall("/herdingcats/herdingcats/actChallenge.html", params, this, function(result) {
                 // Success handled by notification
             });
         },
@@ -600,8 +625,8 @@ function (dojo, declare) {
             this.hideTargetSelection();
             
             this.ajaxcall("/herdingcats/herdingcats/actSelectTargetSlot.html", {
-                target_id: targetId,
-                target_zone: targetZone,
+                slot_index: targetId,
+                zone: targetZone,
                 lock: true
             }, this, function(result) {
                 // Success handled by notification

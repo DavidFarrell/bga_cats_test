@@ -239,13 +239,13 @@ See [`implementation_progress.md`](implementation_progress.md) for detailed chec
 ## 📜 License & Credits
 
 ### Creative Direction
-- **Designer:** David Farrell
+- David Farrell
 
 ### Game Design
-- **Designer:** Col Anderson, Ross Anderson
+- Col Anderson, Ross Anderson
 
 ### Artwork
-- **Artist:** Kris Tsenova
+- Kris Tsenova (in theory - Col Anderson atm)
 - **Card Images:** Located in `/herding_cats_art/`
 
 ### Development

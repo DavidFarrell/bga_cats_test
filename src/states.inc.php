@@ -49,16 +49,17 @@ $machinestates = [
              'actDeclare'
          ])
          ->transitions([
-             'declared' => 95,
+             'declared' => 20,  // Go to challenge window instead of endTurn
          ])        ->build(),
 
     // ========== CHALLENGE SYSTEM ==========
 
     20 => GameStateBuilder::create()
         ->name('challengeWindow')
-        ->description(clienttranslate('Other players may challenge ${actplayer}\'s declaration'))
+        ->description(clienttranslate('Other players may challenge the declaration'))
         ->type(StateType::MULTIPLE_ACTIVE_PLAYER)
         ->args('argChallengeWindow')
+        ->action('stEnterChallengeWindow')
         ->possibleactions([
             'actChallenge',
             'actPassChallenge'
@@ -77,6 +78,7 @@ $machinestates = [
         ->transitions([
             'bluffCaught' => 31,     // Player was bluffing
             'challengeFailed' => 32,  // Player was truthful 
+            'goToTarget' => 40,       // Minimal path: jump to target selection
         ])
         ->build(),
 
@@ -116,6 +118,7 @@ $machinestates = [
         ->descriptionmyturn(clienttranslate('${you} must select a target')) 
         ->type(StateType::ACTIVE_PLAYER)
         ->args('argSelectTarget')
+        ->action('stEnterSelectTarget')
         ->possibleactions([
             'actSelectTargetSlot',
             'actSkipTargeting'  // For non-targeting cards
@@ -166,8 +169,9 @@ $machinestates = [
         ->type(StateType::GAME)
         ->action('stResolveInterceptChallenge')
         ->transitions([
-            'interceptBluffCaught' => 75,    // Defender was bluffing about Laser Pointer
+            'interceptBluffCaught' => 75,     // Defender was bluffing about Laser Pointer
             'interceptChallengeFailed' => 80, // Defender really had Laser Pointer
+            'interceptGoToResolve' => 80,     // Minimal path
         ])
         ->build(),
 
