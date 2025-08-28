@@ -169,3 +169,12 @@ These are NOT bugs, just features we didn't implement:
 ---
 
 **Good luck with your testing! The game is ready to play!** 🎮🐱
+
+---
+
+## ℹ️ Notes Learned During Setup
+
+- Client Ajax lock: pass `lock: true` so the framework injects a UUID. Omitting it triggers “lock should be a UUID (false)”.
+- Request types: `AT_utf8` is not available in this stack; use `AT_alphanum` (or another supported type).
+- ebg.stock images: either pass relative paths (the framework prefixes `g_gamethemeurl`) or prefix exactly once. Double-prefixing breaks images.
+- Notification templates: when using placeholders like `${player_name}`, include matching keys in the args; otherwise the UI shows a substitution error. Simplify messages when debugging.

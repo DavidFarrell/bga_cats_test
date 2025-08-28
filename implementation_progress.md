@@ -168,7 +168,7 @@ This document tracks the implementation progress of Herding Cats for Board Game 
 - [ ] `enableInterceptChallengeUI()` - Intercept challenge
 
 ### Notifications
-- [ ] Setup notification subscriptions
+- [x] Setup notification subscriptions
 - [ ] `notif_declared` / `notif_challengeDeclared`
 - [ ] `notif_challengeResult` / `notif_challengeResultReveal`
 - [ ] `notif_discardPublic`
@@ -184,14 +184,14 @@ This document tracks the implementation progress of Herding Cats for Board Game 
 ## 🎨 Assets & Resources
 
 ### Image Files
-- [ ] Place card images in `img/herding_cats_art/`
-  - [ ] kitten.jpeg
-  - [ ] showcat.jpeg
-  - [ ] alleycat.jpeg
-  - [ ] catnip.jpeg
-  - [ ] animalcontrol.jpeg
-  - [ ] laserpointer.jpeg (⚠️ Note: not "lasterpointer")
-  - [ ] cardback.jpeg
+- [x] Place card images in `img/herding_cats_art/`
+  - [x] kitten.jpeg
+  - [x] showcat.jpeg
+  - [x] alleycat.jpeg
+  - [x] catnip.jpeg
+  - [x] animalcontrol.jpeg
+  - [x] laserpointer.jpeg (⚠️ Note: not "lasterpointer")
+  - [x] cardback.jpeg
 
 ---
 
