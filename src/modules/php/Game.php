@@ -224,7 +224,7 @@ class Game extends \Bga\GameFramework\Table
      * - when the game starts
      * - when a player refreshes the game page (F5)
      */
-    protected function getAllDatas(): array
+    public function getAllDatas(): array
     {
         $result = [];
 
@@ -237,9 +237,160 @@ class Game extends \Bga\GameFramework\Table
             "SELECT `player_id` `id`, `player_score` `score` FROM `player`"
         );
 
-        // TODO: Gather all information about current game situation (visible by player $current_player_id).
+        // Minimal placeholders for client UI; expand when rules are wired up
+        $result['handCounts'] = $this->getHandCounts();
+        $result['hand_counts'] = $result['handCounts']; // maintain legacy key expected by view
+
+        // Provide a dummy hand for the current player so UI can select a card
+        $result['hand'] = $this->getDummyHandFor($current_player_id);
+
+        // Minimal empty structures for herds/discards expected by client
+        $result['herds'] = [];
+        foreach ($result['players'] as $pid => $_p) {
+            $result['herds'][(int)$pid] = [
+                'face_down' => [],
+                'face_up' => [],
+            ];
+        }
+        $result['discards'] = [];
+        foreach ($result['players'] as $pid => $_p) {
+            $result['discards'][(int)$pid] = [];
+        }
 
         return $result;
+    }
+
+    /**
+     * Minimal helper to compute per-player hand counts (placeholder until Deck is wired).
+     */
+    private function getHandCounts(): array
+    {
+        // Minimal placeholder: pretend current player has 7 cards, others 7 as well
+        $players = $this->getCollectionFromDb(
+            "SELECT `player_id` `id` FROM `player`"
+        );
+        $counts = [];
+        foreach ($players as $p) {
+            $counts[(int)$p['id']] = 7;
+        }
+        return $counts;
+    }
+
+    private function getDummyHandFor(int $playerId): array
+    {
+        // Provide 7 dummy cards with ids and types for UI selection
+        $hand = [];
+        $id = 100;
+        for ($i = 0; $i < 7; $i++) {
+            $cardId = $id + $i;
+            $type = ($i % 6) + 1; // 1..6 rotate
+            $hand[(string)$cardId] = [ 'id' => $cardId, 'type' => $type ];
+        }
+        return $hand;
+    }
+
+    // =====================
+    // Args methods (stubs) 
+    // =====================
+
+    public function argAwaitDeclaration(): array
+    {
+        // Provide minimal data to avoid framework errors on state entry
+        return [
+            'canDeclare' => true,
+        ];
+    }
+
+    public function argChallengeWindow(): array
+    {
+        return [
+            'eligible' => [],
+        ];
+    }
+
+    public function argChallengerSelectBluffPenalty(): array
+    {
+        return [];
+    }
+
+    public function argAttackerSelectTruthfulPenalty(): array
+    {
+        return [];
+    }
+
+    public function argSelectTarget(): array
+    {
+        // Allow skipping targeting in this placeholder implementation
+        return [
+            'valid_targets' => [],
+            'canSkip' => true,
+        ];
+    }
+
+    // =====================
+    // Minimal action flow  
+    // =====================
+
+    public function actDeclare(int $card_id, $declared_type, $target_player_id = null): void
+    {
+        $player_id = (int)$this->getActivePlayerId();
+        $decl = (int)$declared_type;
+
+        // Notify card played and hand counts (minimal)
+        $handCounts = $this->getHandCounts();
+        if (isset($handCounts[$player_id]) && $handCounts[$player_id] > 0) {
+            $handCounts[$player_id] = max(0, $handCounts[$player_id] - 1);
+        }
+
+        $this->notify->all('cardPlayed', clienttranslate('${player_name} plays a card'), [
+            'player_id' => $player_id,
+            'player_name' => $this->getActivePlayerName(),
+            'declared_type' => $decl,
+            'card_id' => $card_id,
+            'hand_counts' => $handCounts,
+        ]);
+
+        // Add the played card to herd face-down as declared type (visual only)
+        // Keep message simple to avoid placeholder issues across environments
+        $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
+            'player_id' => $player_id,
+            'player_name' => $this->getActivePlayerName(),
+            'card' => [ 'id' => $card_id, 'type' => $decl ],
+            'visible' => false,
+        ]);
+
+        // Advance via state machine to avoid changing active player within activeplayer state
+        $this->gamestate->nextState('declared');
+    }
+
+    // Minimal end turn handler to rotate to next player
+    public function stEndTurn(): void
+    {
+        $this->activeNextPlayer();
+        $this->gamestate->nextState('nextPlayer');
+    }
+
+    public function actSkipTargeting(): void
+    {
+        // Minimal: ignore targeting and continue
+        $this->gamestate->nextState('noTargeting');
+    }
+
+    public function argInterceptDeclare(): array
+    {
+        return [];
+    }
+
+    public function argInterceptChallengeWindow(): array
+    {
+        return [
+            'eligible' => [],
+        ];
+    }
+
+    public function argInterceptChallengerSelectPenalty(): array
+    {
+        return [];
     }
 
     /**

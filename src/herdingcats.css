@@ -48,25 +48,538 @@
 
 /********* You can start writing your CSS below this line: **********/
 
+/* ======================
+   MAIN GAME LAYOUT
+   ====================== */
 
-/*
-    Example of CSS sprites (a black token and a white token, 20x20px each, embedded in the same "tokens.png" 40x20px image):
+#hc_game_area {
+    width: 100%;
+    min-height: 600px;
+    font-family: Arial, sans-serif;
+    position: relative;
+}
 
-    .white_token {
-        background-image: url('img/tokens.png');
-        background-position: 0px 0px;
+/* Current Player Hand Area */
+#hc_current_hand_area {
+    background: linear-gradient(135deg, #f5f5f5, #e8e8e8);
+    border: 2px solid #ccc;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+#hc_hand_title {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+#hc_current_hand {
+    display: block;
+    min-height: 96px;
+    padding: 10px;
+    background: rgba(255,255,255,0.5);
+    border-radius: 5px;
+}
+
+/* Control Panel */
+#hc_control_panel {
+    background: linear-gradient(135deg, #fff8dc, #f0e68c);
+    border: 2px solid #daa520;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+#hc_action_prompts {
+    text-align: center;
+    font-size: 16px;
+    color: #333;
+    font-weight: bold;
+}
+
+/* Players Area */
+#hc_players_area {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+}
+
+/* ======================
+   PLAYER BOARDS
+   ====================== */
+
+.hc_player_board {
+    border: 3px solid #ccc;
+    border-radius: 15px;
+    padding: 15px;
+    background: linear-gradient(135deg, #fafafa, #f0f0f0);
+    min-width: 280px;
+    max-width: 350px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transition: box-shadow 0.3s ease;
+}
+
+.hc_player_board:hover {
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+/* Player Info Header */
+.hc_player_info {
+    margin-bottom: 15px;
+}
+
+.hc_player_name_panel {
+    padding: 8px 12px;
+    border-radius: 20px;
+    text-align: center;
+    margin-bottom: 8px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.hc_player_name {
+    font-weight: bold;
+    font-size: 14px;
+    text-shadow: 1px 1px 1px rgba(0,0,0,0.3);
+}
+
+.hc_player_stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #666;
+}
+
+.hc_hand_count, .hc_score {
+    font-weight: bold;
+    color: #333;
+}
+
+/* Herd Area */
+.hc_herd_area {
+    margin-bottom: 15px;
+}
+
+.hc_herd_title, .hc_discard_title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #555;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.hc_herd {
+    background: rgba(255,255,255,0.7);
+    border: 1px dashed #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 100px;
+}
+
+.hc_herd_face_down, .hc_herd_face_up {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 5px;
+}
+
+.hc_discard_area {
+    margin-top: 10px;
+}
+
+.hc_discard_pile {
+    background: rgba(255,255,255,0.7);
+    border: 1px dashed #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 60px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Stock visuals for ebg.stock items */
+.stockitem {
+    border: 2px solid #333;
+    border-radius: 8px;
+    margin: 4px;
+    background-size: cover !important;
+    background-position: center center !important;
+    background-repeat: no-repeat !important;
+}
+
+/* ======================
+   CARD STYLING
+   ====================== */
+
+.hc_card {
+    width: 72px;
+    height: 96px;
+    border: 2px solid #333;
+    border-radius: 8px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.hc_card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+/* Hand Cards */
+.hc_hand_card {
+    border-color: #4CAF50;
+    box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+}
+
+.hc_hand_card:hover {
+    border-color: #45a049;
+    box-shadow: 0 4px 8px rgba(76,175,80,0.5);
+}
+
+/* Card Backgrounds - Using placeholders until art is available */
+.hc_card[data-card-type="1"] { /* Kitten */
+    background-image: url('img/herding_cats_art/kitten.jpeg');
+    background-color: #ffb3ba; /* Pink fallback */
+}
+
+.hc_card[data-card-type="2"] { /* Show Cat */
+    background-image: url('img/herding_cats_art/showcat.jpeg');
+    background-color: #ffdfba; /* Peach fallback */
+}
+
+.hc_card[data-card-type="3"] { /* Alley Cat */
+    background-image: url('img/herding_cats_art/alleycat.jpeg');
+    background-color: #ffffba; /* Yellow fallback */
+}
+
+.hc_card[data-card-type="4"] { /* Catnip */
+    background-image: url('img/herding_cats_art/catnip.jpeg');
+    background-color: #baffc9; /* Light green fallback */
+}
+
+.hc_card[data-card-type="5"] { /* Animal Control */
+    background-image: url('img/herding_cats_art/animalcontrol.jpeg');
+    background-color: #bae1ff; /* Light blue fallback */
+}
+
+.hc_card[data-card-type="6"] { /* Laser Pointer */
+    background-image: url('img/herding_cats_art/laserpointer.jpeg');
+    background-color: #e1baff; /* Light purple fallback */
+}
+
+/* Face-down cards show cardback */
+.hc_face_down {
+    background-image: url('img/herding_cats_art/cardback.jpeg');
+    background-color: #8B4513; /* Brown fallback */
+    border-color: #654321;
+}
+
+.hc_face_down:hover {
+    border-color: #8B4513;
+}
+
+/* Face-up herd cards (protected) */
+.hc_herd_card.hc_face_up {
+    border-color: #FF9800;
+    box-shadow: 0 0 0 2px rgba(255,152,0,0.3);
+}
+
+/* Discard pile cards */
+.hc_discard_card {
+    opacity: 0.8;
+    border-color: #666;
+    filter: grayscale(20%);
+}
+
+.hc_discard_card:hover {
+    transform: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Card Selection States */
+.hc_card.hc_selected {
+    border-color: #2196F3;
+    box-shadow: 0 0 0 3px rgba(33,150,243,0.4);
+    transform: translateY(-5px);
+}
+
+.hc_card.hc_selectable {
+    cursor: pointer;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(33,150,243,0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(33,150,243,0); }
+    100% { box-shadow: 0 0 0 0 rgba(33,150,243,0); }
+}
+
+.hc_card.hc_disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(50%);
+}
+
+/* ======================
+   OVERLAYS & MODALS
+   ====================== */
+
+.hc_overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.hc_target_selection, .hc_declaration_panel {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
     }
-    .black_token {
-        background-image: url('img/tokens.png');
-        background-position: -20px 0px;
+    to {
+        transform: translateY(0);
+        opacity: 1;
     }
-    .token {
-        width: 20px;
-        height: 20px;
-        background-repeat: none;
+}
+
+#hc_target_title {
+    margin-top: 0;
+    text-align: center;
+    color: #333;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+#hc_target_options, #hc_card_type_buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+/* ======================
+   BUTTONS
+   ====================== */
+
+.hc_button, .hc_target_btn, .hc_card_type_btn {
+    padding: 12px 20px;
+    border: 2px solid #4CAF50;
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    color: white;
+    border-radius: 25px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.hc_button:hover, .hc_target_btn:hover, .hc_card_type_btn:hover {
+    background: linear-gradient(135deg, #45a049, #4CAF50);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.hc_button:active, .hc_target_btn:active, .hc_card_type_btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.hc_cancel_button {
+    background: linear-gradient(135deg, #f44336, #da190b);
+    border-color: #f44336;
+}
+
+.hc_cancel_button:hover {
+    background: linear-gradient(135deg, #da190b, #f44336);
+}
+
+/* Challenge buttons */
+.hc_challenge_button {
+    background: linear-gradient(135deg, #FF9800, #F57C00);
+    border-color: #FF9800;
+}
+
+.hc_challenge_button:hover {
+    background: linear-gradient(135deg, #F57C00, #FF9800);
+}
+
+.hc_pass_button {
+    background: linear-gradient(135deg, #9E9E9E, #757575);
+    border-color: #9E9E9E;
+}
+
+.hc_pass_button:hover {
+    background: linear-gradient(135deg, #757575, #9E9E9E);
+}
+
+/* ======================
+   RESPONSIVE DESIGN
+   ====================== */
+
+@media (max-width: 768px) {
+    #hc_players_area {
+        flex-direction: column;
+        align-items: center;
     }
-*/
+    
+    .hc_player_board {
+        min-width: 250px;
+        max-width: 90%;
+    }
+    
+    #hc_current_hand {
+        justify-content: center;
+    }
+    
+    .hc_card {
+        width: 60px;
+        height: 80px;
+    }
+    
+    .hc_target_selection, .hc_declaration_panel {
+        margin: 20px;
+        padding: 20px;
+        width: calc(100% - 40px);
+    }
+}
 
+@media (max-width: 480px) {
+    .hc_card {
+        width: 50px;
+        height: 67px;
+    }
+    
+    .hc_player_board {
+        padding: 10px;
+        min-width: 200px;
+    }
+    
+    .hc_button, .hc_target_btn, .hc_card_type_btn {
+        padding: 8px 16px;
+        font-size: 12px;
+    }
+}
 
+/* ======================
+   ANIMATION EFFECTS
+   ====================== */
 
+.hc_card_move {
+    transition: all 0.5s ease;
+}
+
+.hc_card_flip {
+    animation: flipCard 0.6s ease;
+}
+
+@keyframes flipCard {
+    0% { transform: rotateY(0); }
+    50% { transform: rotateY(90deg); }
+    100% { transform: rotateY(0); }
+}
+
+.hc_card_highlight {
+    animation: highlight 1s ease 2;
+}
+
+@keyframes highlight {
+    0%, 100% { box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    50% { box-shadow: 0 0 20px rgba(255,215,0,0.8); }
+}
+
+/* ======================
+   GAME STATE INDICATORS
+   ====================== */
+
+.hc_current_player .hc_player_board {
+    border-width: 4px;
+    box-shadow: 0 0 15px rgba(76,175,80,0.4);
+}
+
+.hc_challenged_player .hc_player_board {
+    border-color: #FF5722;
+    box-shadow: 0 0 15px rgba(255,87,34,0.4);
+}
+
+.hc_intercepting_player .hc_player_board {
+    border-color: #9C27B0;
+    box-shadow: 0 0 15px rgba(156,39,176,0.4);
+}
+
+/* ======================
+   TOOLTIPS & HELP
+   ====================== */
+
+.hc_card[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+}
+
+/* ======================
+   ACCESSIBILITY
+   ====================== */
+
+@media (prefers-reduced-motion: reduce) {
+    .hc_card, .hc_button, .hc_target_btn, .hc_card_type_btn {
+        transition: none;
+    }
+    
+    .hc_card_move, .hc_card_flip, .hc_card_highlight {
+        animation: none;
+    }
+    
+    .hc_overlay {
+        animation: none;
+    }
+}
+
+.hc_card:focus, .hc_button:focus, .hc_target_btn:focus, .hc_card_type_btn:focus {
+    outline: 3px solid #2196F3;
+    outline-offset: 2px;
+}
 

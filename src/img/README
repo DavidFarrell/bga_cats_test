@@ -7,3 +7,12 @@ This directory contains all graphic files for your game:
 Typically, this directory should contain fewer than 10 files, with no file larger than 4 Mb.
 
 See: http://en.doc.boardgamearena.com/Game_art:_img_directory for more details.
+
+## Herding Cats Assets
+
+The herding_cats_art subdirectory contains card artwork:
+- Card back: cardback.jpeg (72x96px)
+- 6 card types: kitten.png, showcat.png, alleycat.png, catnip.png, animalcontrol.png, laserpointer.png (72x96px each)
+- Total: 7 image files for the complete game
+
+Note: BGA typically requires flattening subdirectories, so these files should be moved to the main img/ directory for production deployment.

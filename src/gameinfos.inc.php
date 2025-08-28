@@ -11,33 +11,32 @@
 
 $gameinfos = [
     // Name of the game in English (will serve as the basis for translation)
-    'game_name' => "My Great Game",
+    'game_name' => "Herding Cats",
 
     // Game publisher (use empty string if there is no publisher)
-    'publisher' => 'My Publishing Company',
+    'publisher' => '',
 
     // Url of game publisher website
-    'publisher_website' => 'http://www.mypublishingcompany.com/',
+    'publisher_website' => '',
 
     // Board Game Geek ID of the publisher
-    'publisher_bgg_id' => 1234,
+    'publisher_bgg_id' => 0,
 
     // Board game geek ID of the game
     'bgg_id' => 0,
 
     // Players configuration that can be played (ex: 2 to 4 players)
-    'players' => [2, 3, 4],
+    'players' => [2, 3, 4, 5, 6],
 
     // Suggest players to play with this number of players. Must be null if there is no such advice, or if there is only one possible player configuration.
     // NB: the automatic lobby will try first the lowest number of players if this is not specified. So you _have to_ specify this parameter if the lowest player number is not compatible with the default options.
-    'suggest_player_number' => null,
+    'suggest_player_number' => 4,
 
     // Discourage players to play with these numbers of players. Must be null if there is no such advice.
     'not_recommend_player_number' => null,
-    // 'not_recommend_player_number' => array( 2, 3 ),      // <= example: this is not recommended to play this game with 2 or 3 players
 
     // Estimated game duration, in minutes (used only for the launch, afterward the real duration is computed)
-    'estimated_duration' => 30,
+    'estimated_duration' => 20,
 
     // Time in second add to a player when "giveExtraTime" is called (speed profile = fast)
     'fast_additional_time' => 30,
@@ -84,6 +83,26 @@ $gameinfos = [
     // When doing a rematch, the player order is swapped using a "rotation" so the starting player is not the same
     // If you want to disable this, set this to true
     'disable_player_order_swap_on_rematch' => false,
+
+    // Game complexity (displayed in the list of games)
+    //  0 => "Beginner"
+    //  1 => "Casual"  
+    //  2 => "Medium"
+    //  3 => "Expert"
+    //  4 => "Hardcore"
+    'complexity' => 2, // Medium complexity due to bluffing mechanics
+
+    // Luck vs Strategy 
+    //  0 => "100% Luck", 1 => "75% Luck", 2 => "50% Luck", 3 => "25% Luck", 4 => "0% Luck (100% Strategy)"
+    'luck' => 2, // 50% luck due to hidden information and bluffing
+
+    // Strategy vs Tactics
+    //  0 => "100% Tactics", 1 => "75% Tactics", 2 => "50% Tactics", 3 => "25% Tactics", 4 => "0% Tactics (100% Strategy)"  
+    'strategy' => 2, // Balance of short-term tactical decisions and long-term planning
+
+    // Diplomacy vs Confrontation
+    //  0 => "100% Diplomacy", 1 => "75% Diplomacy", 2 => "50% Diplomacy", 3 => "25% Diplomacy", 4 => "0% Diplomacy (100% Confrontation)"
+    'diplomacy' => 3, // Mostly confrontational with targeted attacks
 
     // Game interface width range (pixels)
     // Note: game interface = space on the left side, without the column on the right

@@ -18,76 +18,213 @@ use Bga\GameFramework\GameStateBuilder;
 use Bga\GameFramework\StateType;
 
 /*
-   Game state machine is a tool used to facilitate game developpement by doing common stuff that can be set up
-   in a very easy way from this configuration file.
-
-   Please check the BGA Studio presentation about game state to understand this, and associated documentation.
-
-   Summary:
-
-   States types:
-   _ activeplayer: in this type of state, we expect some action from the active player.
-   _ multipleactiveplayer: in this type of state, we expect some action from multiple players (the active players)
-   _ game: this is an intermediary state where we don't expect any actions from players. Your game logic must decide what is the next game state.
-   _ manager: special type for initial and final state
-
-   Arguments of game states:
-   _ name: the name of the GameState, in order you can recognize it on your own code.
-   _ description: the description of the current game state is always displayed in the action status bar on
-                  the top of the game. Most of the time this is useless for game state with `StateType::GAME` type.
-   _ descriptionmyturn: the description of the current game state when it's your turn.
-   _ type: defines the type of game states (activeplayer / multipleactiveplayer / game / manager)
-   _ action: name of the method to call when this game state become the current game state. Usually, the
-             action method is prefixed by 'st' (ex: 'stMyGameStateName').
-   _ possibleactions: array that specify possible player actions on this step. It allows you to use `checkAction`
-                      method on both client side (Javacript: `this.checkAction`) and server side (PHP: `$this->checkAction`).
-                      Note that autowired actions and calls with this.bgaPerformAction call the checkAction except if it's explicitely disabled in the call
-   _ transitions: the transitions are the possible paths to go from a game state to another. You must name
-                  transitions in order to use transition names in `nextState` PHP method, and use IDs to
-                  specify the next game state for each transition.
-   _ args: name of the method to call to retrieve arguments for this gamestate. Arguments are sent to the
-           client side to be used on `onEnteringState` or to set arguments in the gamestate description.
-   _ updateGameProgression: when specified, the game progression is updated (=> call to your getGameProgression
-                            method).
+   Game state machine for Herding Cats bluffing card game.
+   
+   Flow:
+   1. Player declares a card identity and targets (if applicable)
+   2. Challenge window - other players may challenge
+   3. If challenged, resolve truth/bluff
+   4. If targeting, player selects specific target
+   5. Defender may intercept with Laser Pointer
+   6. Intercept may be challenged
+   7. Resolve effect and add card to herd
+   8. Check end condition, next player or game end
 */
 
 //    !! It is not a good idea to modify this file when a game is running !!
 
-
 $machinestates = [
-    // only keep this line if your initial state is not 2. In that case, uncomment and replace '2' by your first state id.
-    // 1 => GameStateBuilder::gameSetup(2)->build(), 
+    // Game setup
+    1 => GameStateBuilder::gameSetup(10)->build(),
 
-    2 => GameStateBuilder::create()
-        ->name('playerTurn')
-        ->description(clienttranslate('${actplayer} must play a card or pass'))
-        ->descriptionmyturn(clienttranslate('${you} must play a card or pass'))
+    // ========== MAIN TURN FLOW ==========
+    
+    10 => GameStateBuilder::create()
+        ->name('awaitDeclaration')
+        ->description(clienttranslate('${actplayer} must declare a card and play it'))
+        ->descriptionmyturn(clienttranslate('${you} must declare a card identity and play it'))
         ->type(StateType::ACTIVE_PLAYER)
-        ->args('argPlayerTurn')
+        ->args('argAwaitDeclaration')
+         ->possibleactions([
+             'actDeclare'
+         ])
+         ->transitions([
+             'declared' => 95,
+         ])        ->build(),
+
+    // ========== CHALLENGE SYSTEM ==========
+
+    20 => GameStateBuilder::create()
+        ->name('challengeWindow')
+        ->description(clienttranslate('Other players may challenge ${actplayer}\'s declaration'))
+        ->type(StateType::MULTIPLE_ACTIVE_PLAYER)
+        ->args('argChallengeWindow')
         ->possibleactions([
-            // these actions are called from the front with bgaPerformAction, and matched to the function on the game.php file
-            'actPlayCard', 
-            'actPass',
+            'actChallenge',
+            'actPassChallenge'
         ])
         ->transitions([
-            'playCard' => 3, 
-            'pass' => 3,
+            'challenged' => 30,
+            'unchallenged' => 40,
         ])
         ->build(),
 
-    3 => GameStateBuilder::create()
-        ->name('nextPlayer')
-        ->description('')
+    30 => GameStateBuilder::create()
+        ->name('resolveChallenge')
+        ->description('Resolving challenge')
         ->type(StateType::GAME)
-        ->action('stNextPlayer')
+        ->action('stResolveChallenge')
+        ->transitions([
+            'bluffCaught' => 31,     // Player was bluffing
+            'challengeFailed' => 32,  // Player was truthful 
+        ])
+        ->build(),
+
+    31 => GameStateBuilder::create()
+        ->name('challengerSelectBluffPenalty')
+        ->description(clienttranslate('${challenger} must select a card from ${bluffer}\'s hand to discard'))
+        ->type(StateType::ACTIVE_PLAYER)
+        ->args('argChallengerSelectBluffPenalty')
+        ->possibleactions([
+            'actSelectBlindFromActor'
+        ])
+        ->transitions([
+            'penaltyApplied' => 95,  // End turn
+            'zombie' => 95,  // Handle zombie players
+        ])
+        ->build(),
+
+    32 => GameStateBuilder::create()
+        ->name('attackerSelectTruthfulPenalty')
+        ->description(clienttranslate('${actplayer} selects penalty cards from challengers'))
+        ->type(StateType::ACTIVE_PLAYER)
+        ->args('argAttackerSelectTruthfulPenalty')
+        ->possibleactions([
+            'actSelectBlindFromChallenger'
+        ])
+        ->transitions([
+            'penaltyApplied' => 40,  // Continue to target selection
+            'zombie' => 40,  // Handle zombie players
+        ])
+        ->build(),
+
+    // ========== TARGET SELECTION ==========
+
+    40 => GameStateBuilder::create()
+        ->name('selectTarget')
+        ->description(clienttranslate('${actplayer} must select a target'))
+        ->descriptionmyturn(clienttranslate('${you} must select a target')) 
+        ->type(StateType::ACTIVE_PLAYER)
+        ->args('argSelectTarget')
+        ->possibleactions([
+            'actSelectTargetSlot',
+            'actSkipTargeting'  // For non-targeting cards
+        ])
+        ->transitions([
+            'targetSelected' => 50,
+            'noTargeting' => 80,
+            'zombie' => 80,  // Handle zombie players
+        ])
+        ->build(),
+
+    // ========== INTERCEPTION SYSTEM ==========
+
+    50 => GameStateBuilder::create()
+        ->name('interceptDeclare')
+        ->description(clienttranslate('${target_player} may intercept with Laser Pointer'))
+        ->type(StateType::ACTIVE_PLAYER)
+        ->args('argInterceptDeclare')
+        ->possibleactions([
+            'actDeclareIntercept',
+            'actPassIntercept'
+        ])
+        ->transitions([
+            'interceptDeclared' => 60,
+            'noIntercept' => 80,
+            'zombie' => 80,  // Handle zombie players
+        ])
+        ->build(),
+
+    60 => GameStateBuilder::create()
+        ->name('interceptChallengeWindow')
+        ->description(clienttranslate('Players may challenge ${defender}\'s Laser Pointer intercept'))
+        ->type(StateType::MULTIPLE_ACTIVE_PLAYER)
+        ->args('argInterceptChallengeWindow')
+        ->possibleactions([
+            'actChallengeIntercept',
+            'actPassChallengeIntercept'
+        ])
+        ->transitions([
+            'interceptChallenged' => 70,
+            'interceptUnchallenged' => 80,
+        ])
+        ->build(),
+
+    70 => GameStateBuilder::create()
+        ->name('resolveInterceptChallenge')
+        ->description('Resolving intercept challenge')
+        ->type(StateType::GAME)
+        ->action('stResolveInterceptChallenge')
+        ->transitions([
+            'interceptBluffCaught' => 75,    // Defender was bluffing about Laser Pointer
+            'interceptChallengeFailed' => 80, // Defender really had Laser Pointer
+        ])
+        ->build(),
+
+    75 => GameStateBuilder::create()
+        ->name('interceptChallengerSelectPenalty')
+        ->description(clienttranslate('${intercept_challenger} selects penalty card from ${bluffer}'))
+        ->type(StateType::ACTIVE_PLAYER)
+        ->args('argInterceptChallengerSelectPenalty')
+        ->possibleactions([
+            'actSelectBlindFromActor'  // Reuse existing action for intercept penalty
+        ])
+        ->transitions([
+            'interceptPenaltyApplied' => 80,
+            'zombie' => 80,  // Handle zombie players
+        ])
+        ->build(),
+
+    // ========== EFFECT RESOLUTION ==========
+
+    80 => GameStateBuilder::create()
+        ->name('revealAndResolve')
+        ->description('Revealing card and resolving effect')
+        ->type(StateType::GAME)
+        ->action('stRevealAndResolve')
+        ->transitions([
+            'effectResolved' => 90,
+        ])
+        ->build(),
+
+    90 => GameStateBuilder::create()
+        ->name('addPlayedCardToHerd')
+        ->description('Adding played card to herd')
+        ->type(StateType::GAME)
+        ->action('stAddPlayedCardToHerd')
+        ->transitions([
+            'cardAdded' => 95,
+        ])
+        ->build(),
+
+    // ========== TURN END ==========
+
+    95 => GameStateBuilder::create()
+        ->name('endTurn')
+        ->description('Checking end conditions')
+        ->type(StateType::GAME)
+        ->action('stEndTurn')
         ->updateGameProgression(true)
         ->transitions([
-            'endScore' => 98, 
-            'nextPlayer' => 2,
+            'gameEnd' => 99,
+            'nextPlayer' => 10,
+            'zombie' => 10,  // Handle zombie players
         ])
         ->build(),
 
-    98 => GameStateBuilder::endScore()->build(),
+    // ========== GAME END ==========
+
+    99 => GameStateBuilder::endScore()->build(),
 ];
 
 

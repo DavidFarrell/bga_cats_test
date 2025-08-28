@@ -1,1 +1,100 @@
-{}
+{
+  "100": {
+    "name": "Challenge timer",
+    "needReload": false,
+    "values": {
+      "1": {
+        "name": "10 seconds",
+        "cssPref": "challenge_timer_short"
+      },
+      "2": {
+        "name": "20 seconds",
+        "cssPref": "challenge_timer_medium"
+      },
+      "3": {
+        "name": "30 seconds",
+        "cssPref": "challenge_timer_long"
+      }
+    },
+    "default": "2"
+  },
+  "101": {
+    "name": "Show challenge probability hints",
+    "needReload": false,
+    "values": {
+      "1": {
+        "name": "Enabled",
+        "cssPref": "show_challenge_hints"
+      },
+      "2": {
+        "name": "Disabled",
+        "cssPref": "hide_challenge_hints"
+      }
+    },
+    "default": "1"
+  },
+  "102": {
+    "name": "Card reveal animations",
+    "needReload": false,
+    "values": {
+      "1": {
+        "name": "Fast",
+        "cssPref": "card_animations_fast"
+      },
+      "2": {
+        "name": "Normal",
+        "cssPref": "card_animations_normal"
+      },
+      "3": {
+        "name": "Slow",
+        "cssPref": "card_animations_slow"
+      }
+    },
+    "default": "2"
+  },
+  "103": {
+    "name": "Show opponent discard piles",
+    "needReload": false,
+    "values": {
+      "1": {
+        "name": "Always visible",
+        "cssPref": "discards_always_visible"
+      },
+      "2": {
+        "name": "Click to reveal",
+        "cssPref": "discards_click_to_reveal"
+      }
+    },
+    "default": "1"
+  },
+  "104": {
+    "name": "Highlight valid targets",
+    "needReload": false,
+    "values": {
+      "1": {
+        "name": "Enabled",
+        "cssPref": "highlight_targets"
+      },
+      "2": {
+        "name": "Disabled",
+        "cssPref": "no_highlight_targets"
+      }
+    },
+    "default": "1"
+  },
+  "105": {
+    "name": "Show intercept opportunities",
+    "needReload": false,
+    "values": {
+      "1": {
+        "name": "Show hints when you can intercept",
+        "cssPref": "show_intercept_hints"
+      },
+      "2": {
+        "name": "No hints",
+        "cssPref": "hide_intercept_hints"
+      }
+    },
+    "default": "1"
+  }
+}

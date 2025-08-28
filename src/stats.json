@@ -1,1 +1,161 @@
-{}
+{
+  "player": {
+    "cards_played": {
+      "id": 10,
+      "name": "Cards played",
+      "type": "int"
+    },
+    "successful_bluffs": {
+      "id": 11,
+      "name": "Successful bluffs",
+      "type": "int"
+    },
+    "failed_bluffs": {
+      "id": 12,
+      "name": "Failed bluffs (caught)",
+      "type": "int"
+    },
+    "successful_challenges": {
+      "id": 13,
+      "name": "Successful challenges",
+      "type": "int"
+    },
+    "failed_challenges": {
+      "id": 14,
+      "name": "Failed challenges",
+      "type": "int"
+    },
+    "cards_stolen_by_catnip": {
+      "id": 15,
+      "name": "Cards stolen with Catnip",
+      "type": "int"
+    },
+    "cards_lost_to_catnip": {
+      "id": 16,
+      "name": "Cards lost to Catnip",
+      "type": "int"
+    },
+    "cards_discarded_by_alley_cat": {
+      "id": 17,
+      "name": "Cards forced to discard by Alley Cat",
+      "type": "int"
+    },
+    "cards_removed_by_animal_control": {
+      "id": 18,
+      "name": "Herd cards removed by Animal Control",
+      "type": "int"
+    },
+    "successful_intercepts": {
+      "id": 19,
+      "name": "Successful Laser Pointer intercepts",
+      "type": "int"
+    },
+    "failed_intercepts": {
+      "id": 20,
+      "name": "Failed Laser Pointer intercept bluffs",
+      "type": "int"
+    },
+    "kittens_in_final_herd": {
+      "id": 21,
+      "name": "Kittens in final herd",
+      "type": "int"
+    },
+    "show_cat_bonus_earned": {
+      "id": 22,
+      "name": "Show Cat bonus earned (7 instead of 5)",
+      "type": "bool"
+    },
+    "herd_cards_face_up": {
+      "id": 23,
+      "name": "Cards revealed face-up in herd",
+      "type": "int"
+    },
+    "hand_bonus_points": {
+      "id": 24,
+      "name": "Bonus points from cards remaining in hand",
+      "type": "int"
+    },
+    "final_herd_size": {
+      "id": 25,
+      "name": "Final herd size",
+      "type": "int"
+    },
+    "cards_discarded_as_penalties": {
+      "id": 26,
+      "name": "Cards discarded as challenge penalties",
+      "type": "int"
+    },
+    "ineffective_attacks_due_to_matching": {
+      "id": 27,
+      "name": "Attacks that were ineffective due to card matching",
+      "type": "int"
+    },
+    "times_targeted_by_opponents": {
+      "id": 28,
+      "name": "Times targeted by opponent attacks",
+      "type": "int"
+    },
+    "bluff_success_rate": {
+      "id": 29,
+      "name": "Bluff success rate (%)",
+      "type": "float"
+    },
+    "challenge_success_rate": {
+      "id": 30,
+      "name": "Challenge success rate (%)",
+      "type": "float"
+    }
+  },
+  "table": {
+    "total_challenges": {
+      "id": 50,
+      "name": "Total challenges made",
+      "type": "int"
+    },
+    "total_bluffs": {
+      "id": 51,
+      "name": "Total bluff attempts",
+      "type": "int"
+    },
+    "total_intercepts": {
+      "id": 52,
+      "name": "Total intercept attempts",
+      "type": "int"
+    },
+    "cards_stolen_total": {
+      "id": 53,
+      "name": "Total cards stolen with Catnip",
+      "type": "int"
+    },
+    "cards_removed_total": {
+      "id": 54,
+      "name": "Total cards removed with Animal Control",
+      "type": "int"
+    },
+    "game_length_turns": {
+      "id": 55,
+      "name": "Game length in turns",
+      "type": "int"
+    },
+    "average_hand_size_at_end": {
+      "id": 56,
+      "name": "Average hand size at game end",
+      "type": "float"
+    },
+    "total_face_up_cards": {
+      "id": 57,
+      "name": "Total cards revealed face-up",
+      "type": "int"
+    },
+    "bluff_success_rate_overall": {
+      "id": 58,
+      "name": "Overall bluff success rate (%)",
+      "type": "float"
+    },
+    "challenge_success_rate_overall": {
+      "id": 59,
+      "name": "Overall challenge success rate (%)",
+      "type": "float"
+    }
+  }
+}
