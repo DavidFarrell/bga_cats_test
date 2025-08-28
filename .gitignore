@@ -55,3 +55,6 @@ unmount_example_games.sh
 
 # Example games folder (reference only, not our code)
 example_games/
+
+# Local screenshots and captures
+screenshots/
