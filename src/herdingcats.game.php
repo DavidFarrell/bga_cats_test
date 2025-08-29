@@ -1492,48 +1492,7 @@ class HerdingCats extends Table
         ];
     }
 
-    function argAttackerSelectTruthfulPenalty()
-    {
-        self::notifyAllPlayers('debug', 'argAttackerSelectTruthfulPenalty called', []);
-
-        $pending = $this->pullPending();
-        if (!$pending) {
-            return [];
-        }
-        
-        $challengers = json_decode($pending['challengers'], true);
-        $challenger_info = [];
-
-        if (empty($challengers)) {
-            return [
-                'pending_action' => $pending,
-                'challengers' => [],
-                'actor_name' => self::getPlayerNameById($pending['actor_player_id'])
-            ];
-        }
-
-        $first_challenger_id = $challengers[0];
-        
-        foreach ($challengers as $challenger_id) {
-            $challenger_cards = $this->getPlayerHandCards($challenger_id);
-            $challenger_info[] = [
-                'player_id' => $challenger_id,
-                'player_name' => self::getPlayerNameById($challenger_id),
-                'hand_count' => count($challenger_cards)
-            ];
-        }
-        
-        $args = [
-            'pending_action' => $pending,
-            'challengers' => $challenger_info,
-            'actor_name' => self::getPlayerNameById($pending['actor_player_id']),
-            'challenger_name' => self::getPlayerNameById($first_challenger_id)
-        ];
-
-        self::notifyAllPlayers('debug', 'argAttackerSelectTruthfulPenalty args: '.json_encode($args), []);
-
-        return $args;
-    }
+    
 
     function argSelectTarget()
     {
