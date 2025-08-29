@@ -1513,7 +1513,8 @@ class HerdingCats extends Table
         
         return [
             'pending_action' => $pending,
-            'challengers' => $challenger_info
+            'challengers' => $challenger_info,
+            'actor_name' => self::getPlayerNameById($pending['actor_player_id'])
         ];
     }
 

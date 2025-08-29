@@ -394,9 +394,12 @@ function (dojo, declare) {
                     break;
 
                 case 'attackerSelectTruthfulPenalty':
-                    if (args) {
-                        this._penaltyArgs = args;
-                        this.renderPenaltyHand(args.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
+                    if (args && args.challengers && args.challengers.length > 0) {
+                        const challenger = args.challengers[0];
+                        this._penaltyArgs = {
+                            target_player_id: challenger.player_id
+                        };
+                        this.renderPenaltyHand(challenger.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
                     }
                     break;
 

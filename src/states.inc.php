@@ -100,8 +100,8 @@ $machinestates = [
 
     32 => GameStateBuilder::create()
         ->name('attackerSelectTruthfulPenalty')
-        ->description(clienttranslate('Actor may discard one card from a challenger\'s hand'))
-        ->descriptionmyturn(clienttranslate('You may discard one card from a challenger\'s hand'))
+                ->description(clienttranslate('${actor_name} may discard one card from ${challenger_name}'s hand'))
+        ->descriptionmyturn(clienttranslate('You may discard one card from ${challenger_name}'s hand'))
         ->type(StateType::ACTIVE_PLAYER)
         ->args('argAttackerSelectTruthfulPenalty')
         ->possibleactions([
