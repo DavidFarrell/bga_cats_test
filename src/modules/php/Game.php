@@ -23,6 +23,7 @@ class Game extends \Bga\GameFramework\Table
     private static array $CARD_TYPES;
     private const G_PENDING_CARD = 'g_pending_card';
     private const G_PENDING_DECL = 'g_pending_decl';
+    private const G_ACTOR = 'g_actor';
     private const G_TARGET_PLAYER = 'g_target_player';
     private const G_TARGET_ZONE = 'g_target_zone'; // 1 = hand, 2 = herd
 
@@ -42,8 +43,9 @@ class Game extends \Bga\GameFramework\Table
         $this->initGameStateLabels([
             self::G_PENDING_CARD => 10,
             self::G_PENDING_DECL => 11,
-            self::G_TARGET_PLAYER => 12,
-            self::G_TARGET_ZONE => 13,
+            self::G_ACTOR => 12,
+            self::G_TARGET_PLAYER => 13,
+            self::G_TARGET_ZONE => 14,
         ]);
 
         self::$CARD_TYPES = [
@@ -334,12 +336,20 @@ class Game extends \Bga\GameFramework\Table
 
     public function argChallengerSelectBluffPenalty(): array
     {
-        return [];
+        $actor = (int)$this->getGameStateValue(self::G_ACTOR);
+        return [
+            'target_player_id' => $actor,
+            'hand_count' => 7,
+        ];
     }
 
     public function argAttackerSelectTruthfulPenalty(): array
     {
-        return [];
+        $target = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        return [
+            'target_player_id' => $target,
+            'hand_count' => 7,
+        ];
     }
 
     // removed placeholder argSelectTarget (see the fully implemented version below)
@@ -367,18 +377,10 @@ class Game extends \Bga\GameFramework\Table
             'hand_counts' => $handCounts,
         ]);
 
-        // Add the played card to herd face-down as declared type (visual only)
-        // Keep message simple to avoid placeholder issues across environments
-        $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
-            'player_id' => $player_id,
-            'player_name' => $this->getActivePlayerName(),
-            'card' => [ 'id' => $card_id, 'type' => $decl ],
-            'visible' => false,
-        ]);
-
         // Store pending declaration info for downstream states
         $this->setGameStateValue(self::G_PENDING_CARD, $card_id);
         $this->setGameStateValue(self::G_PENDING_DECL, $decl);
+        $this->setGameStateValue(self::G_ACTOR, $player_id);
         $this->setGameStateValue(self::G_TARGET_PLAYER, 0);
         $this->setGameStateValue(self::G_TARGET_ZONE, 0);
 
@@ -452,8 +454,42 @@ class Game extends \Bga\GameFramework\Table
 
     public function stResolveChallenge(): void
     {
-        // Minimal: proceed directly to target selection
-        $this->gamestate->nextState('goToTarget');
+        $actor = (int)$this->getActivePlayerId();
+        $decl  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        $card  = (int)$this->getGameStateValue(self::G_PENDING_CARD);
+        // Derive a temporary actual type from the dummy card id range (100..)
+        $actual = (($card - 100) % 6 + 6) % 6 + 1;
+
+        $isBluff = ($decl !== $actual);
+
+        $this->notify->all('challengeResolved', clienttranslate('${player_name}\'s declaration was ${result}'), [
+            'player_id'   => $actor,
+            'player_name' => $this->getPlayerNameById($actor),
+            'result'      => $isBluff ? 'a bluff' : 'truthful',
+        ]);
+
+        if ($isBluff) {
+            // Move control to a challenger for penalty selection (pick first non-actor)
+            $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+            foreach ($players as $p) {
+                $pid = (int)$p['id'];
+                if ($pid !== $actor) { $this->gamestate->changeActivePlayer($pid); break; }
+            }
+            // challenger picks from actor's hand
+            $this->setGameStateValue(self::G_TARGET_PLAYER, (int)$this->getGameStateValue(self::G_ACTOR));
+            $this->setGameStateValue(self::G_TARGET_ZONE, 1);
+            $this->gamestate->nextState('bluffCaught');
+        } else {
+            // Actor continues
+            $this->gamestate->changeActivePlayer($actor);
+            // actor picks from a challenger
+            $penalized = 0;
+            $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+            foreach ($players as $p) { $pid = (int)$p['id']; if ($pid !== $actor) { $penalized = $pid; break; } }
+            $this->setGameStateValue(self::G_TARGET_PLAYER, $penalized);
+            $this->setGameStateValue(self::G_TARGET_ZONE, 1);
+            $this->gamestate->nextState('challengeFailed');
+        }
     }
 
     public function stResolveInterceptChallenge(): void
@@ -464,14 +500,88 @@ class Game extends \Bga\GameFramework\Table
 
     public function stRevealAndResolve(): void
     {
-        // Minimal: skip effect resolution details for now
+        $actor = (int)$this->getActivePlayerId();
+        $decl  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        $targetPlayer = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        $targetZone   = (int)$this->getGameStateValue(self::G_TARGET_ZONE); // 1=hand,2=herd
+
+        switch ($decl) {
+            case 3: // Alley Cat
+                $this->notify->all('alleyCatEffect', clienttranslate('${player_name} forces a discard from ${target_name}\'s hand'), [
+                    'player_id'   => $actor,
+                    'player_name' => $this->getPlayerNameById($actor),
+                    'target_id'   => $targetPlayer,
+                    'target_name' => $this->getPlayerNameById($targetPlayer),
+                ]);
+                break;
+            case 4: // Catnip
+                $this->notify->all('catnipEffect', clienttranslate('${player_name} steals a card from ${target_name}\'s hand to herd'), [
+                    'player_id'   => $actor,
+                    'player_name' => $this->getPlayerNameById($actor),
+                    'target_id'   => $targetPlayer,
+                    'target_name' => $this->getPlayerNameById($targetPlayer),
+                ]);
+                break;
+            case 5: // Animal Control
+                $this->notify->all('animalControlEffect', clienttranslate('${player_name} removes a card from ${target_name}\'s herd'), [
+                    'player_id'   => $actor,
+                    'player_name' => $this->getPlayerNameById($actor),
+                    'target_id'   => $targetPlayer,
+                    'target_name' => $this->getPlayerNameById($targetPlayer),
+                ]);
+                break;
+            default:
+                // Non-targeting: no effect to apply here in this minimal pass
+                break;
+        }
+
         $this->gamestate->nextState('effectResolved');
     }
 
     public function stAddPlayedCardToHerd(): void
     {
-        // Minimal: already notified a visual herd update at declare time
+        // Add the played card to herd (face-down); notify so all clients render it now
+        $actor = (int)$this->getGameStateValue(self::G_ACTOR);
+        $card  = (int)$this->getGameStateValue(self::G_PENDING_CARD);
+        $decl  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+
+        $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
+            'player_id' => $actor,
+            'player_name' => $this->getPlayerNameById($actor),
+            'card' => [ 'id' => $card, 'type' => $decl ],
+            'visible' => false,
+        ]);
+
         $this->gamestate->nextState('cardAdded');
+    }
+
+    public function actSelectBlindFromChallenger(int $player_id, int $card_index): void
+    {
+        $this->checkAction('actSelectBlindFromChallenger');
+        $actor = (int)$this->getActivePlayerId();
+        $this->notify->all('truthPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
+            'player_id'   => $actor,
+            'player_name' => $this->getPlayerNameById($actor),
+            'target_id'   => $player_id,
+            'target_name' => $this->getPlayerNameById($player_id),
+            'card_index'  => $card_index,
+        ]);
+        $this->gamestate->nextState('penaltyApplied');
+    }
+
+    public function actSelectBlindFromActor(int $card_index): void
+    {
+        $this->checkAction('actSelectBlindFromActor');
+        $actor = (int)$this->getActivePlayerId();
+        $fromPlayer = (int)$this->getGameStateValue(self::G_ACTOR);
+        $this->notify->all('bluffPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
+            'player_id'   => $actor,
+            'player_name' => $this->getPlayerNameById($actor),
+            'target_id'   => $fromPlayer,
+            'target_name' => $this->getPlayerNameById($fromPlayer),
+            'card_index'  => $card_index,
+        ]);
+        $this->gamestate->nextState('penaltyApplied');
     }
 
     public function argSelectTarget(): array
@@ -629,6 +739,7 @@ class Game extends \Bga\GameFramework\Table
         // Initialize our pending/target labels
         $this->setGameStateInitialValue(self::G_PENDING_CARD, 0);
         $this->setGameStateInitialValue(self::G_PENDING_DECL, 0);
+        $this->setGameStateInitialValue(self::G_ACTOR, 0);
         $this->setGameStateInitialValue(self::G_TARGET_PLAYER, 0);
         $this->setGameStateInitialValue(self::G_TARGET_ZONE, 0);
 

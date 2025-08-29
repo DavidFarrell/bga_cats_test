@@ -56,7 +56,8 @@ $machinestates = [
 
     20 => GameStateBuilder::create()
         ->name('challengeWindow')
-        ->description(clienttranslate('Other players may challenge the declaration'))
+        ->description(clienttranslate('Waiting for possible challenges'))
+        ->descriptionmyturn(clienttranslate('You may challenge the declaration'))
         ->type(StateType::MULTIPLE_ACTIVE_PLAYER)
         ->args('argChallengeWindow')
         ->action('stEnterChallengeWindow')
@@ -84,7 +85,8 @@ $machinestates = [
 
     31 => GameStateBuilder::create()
         ->name('challengerSelectBluffPenalty')
-        ->description(clienttranslate('${challenger} must select a card from ${bluffer}\'s hand to discard'))
+        ->description(clienttranslate('A challenger may discard one card from the actor\'s hand'))
+        ->descriptionmyturn(clienttranslate('Select one card from the actor\'s hand to discard'))
         ->type(StateType::ACTIVE_PLAYER)
         ->args('argChallengerSelectBluffPenalty')
         ->possibleactions([
@@ -98,7 +100,8 @@ $machinestates = [
 
     32 => GameStateBuilder::create()
         ->name('attackerSelectTruthfulPenalty')
-        ->description(clienttranslate('${actplayer} selects penalty cards from challengers'))
+        ->description(clienttranslate('Actor may discard one card from a challenger\'s hand'))
+        ->descriptionmyturn(clienttranslate('You may discard one card from a challenger\'s hand'))
         ->type(StateType::ACTIVE_PLAYER)
         ->args('argAttackerSelectTruthfulPenalty')
         ->possibleactions([

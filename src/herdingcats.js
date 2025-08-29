@@ -146,7 +146,7 @@ function (dojo, declare) {
                 // Setup face-down herd
                 this.playerHerds[playerId].faceDown.create(this, $('hc_herd_face_down_' + playerId), 72, 96);
                 this.playerHerds[playerId].faceDown.image_items_per_row = 1;
-                this.playerHerds[playerId].faceDown.addItemType(0, 0, 'img/herding_cats_art/cardback.jpeg', 0);
+                this.playerHerds[playerId].faceDown.addItemType(0, 0, g_gamethemeurl + 'img/herding_cats_art/cardback.jpeg', 0);
                 
                 // Setup face-up herd
                 this.playerHerds[playerId].faceUp.create(this, $('hc_herd_face_up_' + playerId), 72, 96);
@@ -160,7 +160,7 @@ function (dojo, declare) {
                     6: 'img/herding_cats_art/laserpointer.jpeg'
                 };
                 for (let cardType = 1; cardType <= 6; cardType++) {
-                    this.playerHerds[playerId].faceUp.addItemType(cardType, cardType, typeToImg[cardType], 0);
+                    this.playerHerds[playerId].faceUp.addItemType(cardType, cardType, g_gamethemeurl + typeToImg[cardType], 0);
                 }
                 
                 // Create discard stock
@@ -176,7 +176,7 @@ function (dojo, declare) {
                     6: 'img/herding_cats_art/laserpointer.jpeg'
                 };
                 for (let cardType = 1; cardType <= 6; cardType++) {
-                    this.playerDiscards[playerId].addItemType(cardType, cardType, typeToImg2[cardType], 0);
+                    this.playerDiscards[playerId].addItemType(cardType, cardType, g_gamethemeurl + typeToImg2[cardType], 0);
                 }
                 
                 // Load existing cards
@@ -287,7 +287,17 @@ function (dojo, declare) {
 
         onEnteringState_challengeWindow: function(args) {
             // Show challenge options for eligible players
+            // Cache declared data so preview persists across re-renders
+            if (args && args.declared_card) {
+                this.currentDeclaredType = args.declared_card;
+            }
+            if (args && args.acting_player_name) {
+                this.currentActorName = args.acting_player_name;
+            }
             this.updateActionPrompts('challengeWindow', args);
+            // Ensure preview is rendered immediately
+            const dType = (args && args.declared_card) ? args.declared_card : this.currentDeclaredType;
+            if (dType) this.renderDeclaredPreview(dType);
             
             // Check if current player can challenge
             if (args && args.eligible_challengers && args.eligible_challengers.includes(parseInt(this.player_id))) {
@@ -344,6 +354,8 @@ function (dojo, declare) {
                 case 'interceptChallengeWindow':
                     // Clear challenge UI
                     dojo.query('#challenge_btn, #pass_challenge_btn').forEach(dojo.destroy);
+                    // Remove declared preview
+                    var prev = $('hc_declared_preview'); if (prev) dojo.destroy(prev);
                     break;
             }               
         }, 
@@ -363,8 +375,12 @@ function (dojo, declare) {
                         // No action buttons needed - use card selection
                         break;
                         
-                    case 'challengeWindow':
-                        // Challenge buttons are handled in onEnteringState_challengeWindow
+                case 'challengeWindow':
+                        // Ensure buttons appear in MULTIPLE_ACTIVE state via action bar
+                        if (args && args.eligible_challengers && args.eligible_challengers.includes(parseInt(this.player_id))) {
+                            this.addActionButton('challenge_btn', _('Challenge'), 'onChallenge');
+                            this.addActionButton('pass_challenge_btn', _('Pass'), 'onPassChallenge', null, false, 'gray');
+                        }
                         break;
                         
                     case 'interceptDeclare':
@@ -372,16 +388,30 @@ function (dojo, declare) {
                         this.addActionButton('pass_intercept_btn', _('Allow Attack'), 'onPassIntercept', null, false, 'gray');
                         break;
                         
-                    case 'interceptChallengeWindow':
-                        this.addActionButton('challenge_intercept_btn', _('Challenge Laser Pointer'), 'onChallengeIntercept');
-                        this.addActionButton('pass_intercept_challenge_btn', _('Pass'), 'onPassChallengeIntercept', null, false, 'gray');
-                        break;
-                        
-                    case 'selectTarget':
-                        if (args && args.canSkip) {
-                            this.addActionButton('skip_targeting_btn', _('Skip Targeting'), 'onSkipTargeting', null, false, 'gray');
-                        }
-                        break;
+                case 'interceptChallengeWindow':
+                    this.addActionButton('challenge_intercept_btn', _('Challenge Laser Pointer'), 'onChallengeIntercept');
+                    this.addActionButton('pass_intercept_challenge_btn', _('Pass'), 'onPassChallengeIntercept', null, false, 'gray');
+                    break;
+
+                case 'attackerSelectTruthfulPenalty':
+                    if (args) {
+                        this._penaltyArgs = args;
+                        this.renderPenaltyHand(args.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
+                    }
+                    break;
+
+                case 'challengerSelectBluffPenalty':
+                    if (args) {
+                        this._penaltyArgs = args;
+                        this.renderPenaltyHand(args.hand_count || 0, (i)=>this.onPickBluffPenalty(i));
+                    }
+                    break;
+
+                case 'selectTarget':
+                    if (args && args.canSkip) {
+                        this.addActionButton('skip_targeting_btn', _('Skip Targeting'), 'onSkipTargeting', null, false, 'gray');
+                    }
+                    break;
                 }
             }
         },        
@@ -393,6 +423,12 @@ function (dojo, declare) {
             const promptsDiv = $('hc_action_prompts');
             if (!promptsDiv) return;
             
+            // Use a dedicated text span so we don't wipe the preview element
+            let textSpan = $('hc_prompt_text');
+            if (!textSpan) {
+                textSpan = dojo.create('span', { id: 'hc_prompt_text' }, promptsDiv);
+            }
+            
             let promptText = '';
             
             switch(stateName) {
@@ -400,11 +436,12 @@ function (dojo, declare) {
                     promptText = _('Select a card from your hand and declare its type');
                     break;
                 case 'challengeWindow':
-                    if (args && args.declared_card && args.acting_player_name) {
-                        promptText = dojo.string.substitute(_('${player} declared ${card}. Challenge?'), {
-                            player: args.acting_player_name,
-                            card: this.cardTypeNames[args.declared_card]
-                        });
+                    // Yellow area should focus on the declared info only; system shows waiting text above.
+                    const dType2 = (args && args.declared_card) ? args.declared_card : this.currentDeclaredType;
+                    if (dType2) {
+                        promptText = dojo.string.substitute(_('Declared as: ${card}'), { card: this.cardTypeNames[dType2] });
+                    } else {
+                        promptText = '';
                     }
                     break;
                 case 'selectTarget':
@@ -416,9 +453,37 @@ function (dojo, declare) {
                 case 'interceptChallengeWindow':
                     promptText = _('Player claims to have Laser Pointer. Challenge?');
                     break;
+                case 'attackerSelectTruthfulPenalty':
+                    promptText = _('You may discard one card from opponent\'s hand');
+                    break;
+                case 'challengerSelectBluffPenalty':
+                    promptText = _('Select opponent card to discard');
+                    break;
             }
             
-            promptsDiv.innerHTML = promptText;
+            textSpan.innerHTML = promptText;
+
+            // For challenge window, show a small declared preview to all players, using fallback when needed
+            if (stateName === 'challengeWindow') {
+                const dTypePrev = (args && args.declared_card) ? args.declared_card : this.currentDeclaredType;
+                if (dTypePrev) this.renderDeclaredPreview(dTypePrev);
+            }
+        },
+
+        renderDeclaredPreview: function(declaredType) {
+            // Small preview under prompts: face-down card + declared type label
+            const promptsDiv = $('hc_action_prompts');
+            if (!promptsDiv) return;
+            const prevId = 'hc_declared_preview';
+            let prev = $(prevId);
+            if (!prev) {
+                prev = dojo.create('div', { id: prevId, style: 'margin-top:8px; display:flex; align-items:center; gap:8px;' }, promptsDiv);
+                const card = dojo.create('div', { className: 'hc_card hc_face_down', style: 'width:36px;height:48px;border-width:1px;background-image:url('+ (typeof g_gamethemeurl!=='undefined'? g_gamethemeurl : '') + 'img/herding_cats_art/cardback.jpeg);background-size:cover;background-position:center;' }, prev);
+                // background-image is set by CSS class hc_face_down
+                dojo.create('span', { innerHTML: dojo.string.substitute(_('Declared as: ${type}'), { type: this.cardTypeNames[declaredType] }) }, prev);
+            } else {
+                prev.querySelector('span').innerHTML = dojo.string.substitute(_('Declared as: ${type}'), { type: this.cardTypeNames[declaredType] });
+            }
         },
 
         showDeclarationDialog: function(cardId) {
@@ -533,25 +598,11 @@ function (dojo, declare) {
         
         onPlayerHandSelectionChanged: function() {
             const selection = this.playerHand.getSelectedItems();
-            
             if (selection.length > 0) {
                 const cardId = selection[0].id;
-                const cardType = selection[0].type; // Get the actual card type from the stock item
-                this.selectedCard = cardId; // cache selection so we can send it later
-                
-                // Skip dialog and directly play the card with its actual type
+                // Show bluff/declaration dialog so player can choose any identity
                 if (this.gamedatas.gamestate && this.gamedatas.gamestate.name === 'awaitDeclaration') {
-                    // Directly send declaration to server using actual card type
-                    this.ajaxcall("/herdingcats/herdingcats/actDeclare.html", {
-                        card_id: parseInt(cardId),
-                        declared_type: parseInt(cardType), // Use actual card type (no bluffing)
-                        lock: true
-                    }, this, function(result) {
-                        // Success handled by notification
-                    }, function(is_error) {
-                        // Error handling
-                        console.error('Declaration failed', is_error);
-                    });
+                    this.showDeclarationDialog(cardId);
                 }
             }
         },
@@ -619,6 +670,37 @@ function (dojo, declare) {
             }, this, function(result) {
                 // Success handled by notification
             });
+        },
+
+        onPickTruthPenalty: function(index) {
+            const args = this._penaltyArgs || {};
+            const targetId = args.target_player_id;
+            this.ajaxcall("/herdingcats/herdingcats/actSelectBlindFromChallenger.html", {
+                player_id: targetId,
+                card_index: index,
+                lock: true
+            }, this, function(result) {});
+        },
+
+        onPickBluffPenalty: function(index) {
+            this.ajaxcall("/herdingcats/herdingcats/actSelectBlindFromActor.html", {
+                card_index: index,
+                lock: true
+            }, this, function(result) {});
+        },
+
+        renderPenaltyHand: function(count, onClick) {
+            const promptsDiv = $('hc_action_prompts');
+            if (!promptsDiv) return;
+            const id = 'hc_penalty_hand';
+            let host = $(id);
+            if (host) dojo.destroy(host);
+            host = dojo.create('div', { id, style: 'margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;' }, promptsDiv);
+            for (let i = 0; i < count; i++) {
+                const c = dojo.create('div', { className: 'hc_card hc_face_down', style: 'width:48px;height:64px;border-width:1px;cursor:pointer;' }, host);
+                dojo.connect(c, 'onclick', this, ()=> onClick(i));
+                c.title = _('Pick slot ') + i;
+            }
         },
 
         onSelectTarget: function(targetId, targetZone) {
