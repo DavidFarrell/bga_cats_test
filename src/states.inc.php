@@ -6,7 +6,7 @@
  *
  * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
  * See http://en.boardgamearena.com/#!doc/Studio for more information.
- * -----
+ * ----- 
  *
  * states.inc.php
  *
@@ -37,7 +37,7 @@ $machinestates = [
     // Game setup
     1 => GameStateBuilder::gameSetup(10)->build(),
 
-    // ========== MAIN TURN FLOW ==========
+    // ========== MAIN TURN FLOW ========== 
     
     10 => GameStateBuilder::create()
         ->name('awaitDeclaration')
@@ -52,7 +52,7 @@ $machinestates = [
              'declared' => 20,  // Go to challenge window instead of endTurn
          ])        ->build(),
 
-    // ========== CHALLENGE SYSTEM ==========
+    // ========== CHALLENGE SYSTEM ========== 
 
     20 => GameStateBuilder::create()
         ->name('challengeWindow')
@@ -100,8 +100,8 @@ $machinestates = [
 
     32 => GameStateBuilder::create()
         ->name('attackerSelectTruthfulPenalty')
-                ->description(clienttranslate('${actor_name} may discard one card from ${challenger_name}\'s hand'))
-        ->descriptionmyturn(clienttranslate('You may discard one card from ${challenger_name}'s hand'))
+        ->description(clienttranslate('${actor_name} may discard one card from ${challenger_name}\'s hand'))
+        ->descriptionmyturn(clienttranslate('You may discard one card from ${challenger_name}\'s hand'))
         ->type(StateType::ACTIVE_PLAYER)
         ->args('argAttackerSelectTruthfulPenalty')
         ->possibleactions([
@@ -113,7 +113,7 @@ $machinestates = [
         ])
         ->build(),
 
-    // ========== TARGET SELECTION ==========
+    // ========== TARGET SELECTION ========== 
 
     40 => GameStateBuilder::create()
         ->name('selectTarget')
@@ -133,7 +133,7 @@ $machinestates = [
         ])
         ->build(),
 
-    // ========== INTERCEPTION SYSTEM ==========
+    // ========== INTERCEPTION SYSTEM ========== 
 
     50 => GameStateBuilder::create()
         ->name('interceptDeclare')
@@ -192,7 +192,7 @@ $machinestates = [
         ])
         ->build(),
 
-    // ========== EFFECT RESOLUTION ==========
+    // ========== EFFECT RESOLUTION ========== 
 
     80 => GameStateBuilder::create()
         ->name('revealAndResolve')
@@ -214,7 +214,7 @@ $machinestates = [
         ])
         ->build(),
 
-    // ========== TURN END ==========
+    // ========== TURN END ========== 
 
     95 => GameStateBuilder::create()
         ->name('endTurn')
@@ -229,10 +229,7 @@ $machinestates = [
         ])
         ->build(),
 
-    // ========== GAME END ==========
+    // ========== GAME END ========== 
 
     99 => GameStateBuilder::endScore()->build(),
 ];
-
-
-
