@@ -1501,6 +1501,16 @@ class HerdingCats extends Table
         
         $challengers = json_decode($pending['challengers'], true);
         $challenger_info = [];
+
+        if (empty($challengers)) {
+            return [
+                'pending_action' => $pending,
+                'challengers' => [],
+                'actor_name' => self::getPlayerNameById($pending['actor_player_id'])
+            ];
+        }
+
+        $first_challenger_id = $challengers[0];
         
         foreach ($challengers as $challenger_id) {
             $challenger_cards = $this->getPlayerHandCards($challenger_id);
@@ -1514,7 +1524,8 @@ class HerdingCats extends Table
         return [
             'pending_action' => $pending,
             'challengers' => $challenger_info,
-            'actor_name' => self::getPlayerNameById($pending['actor_player_id'])
+            'actor_name' => self::getPlayerNameById($pending['actor_player_id']),
+            'challenger_name' => self::getPlayerNameById($first_challenger_id)
         ];
     }
 
