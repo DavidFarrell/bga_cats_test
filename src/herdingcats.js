@@ -437,12 +437,7 @@ function (dojo, declare) {
                     break;
                 case 'challengeWindow':
                     // Yellow area should focus on the declared info only; system shows waiting text above.
-                    const dType2 = (args && args.declared_card) ? args.declared_card : this.currentDeclaredType;
-                    if (dType2) {
-                        promptText = dojo.string.substitute(_('Declared as: ${card}'), { card: this.cardTypeNames[dType2] });
-                    } else {
-                        promptText = '';
-                    }
+                    promptText = ''; // Let renderDeclaredPreview handle the display
                     break;
                 case 'selectTarget':
                     promptText = _('Select your target');
@@ -676,7 +671,7 @@ function (dojo, declare) {
             const args = this._penaltyArgs || {};
             const targetId = args.target_player_id;
             this.ajaxcall("/herdingcats/herdingcats/actSelectBlindFromChallenger.html", {
-                player_id: targetId,
+                challenger_id: targetId,
                 card_index: index,
                 lock: true
             }, this, function(result) {});
