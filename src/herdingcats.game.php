@@ -1183,6 +1183,12 @@ class HerdingCats extends Table
         
         // Apply truth penalty - challenger discards
         $this->cards->moveCard($selected_card['id'], CARD_LOCATION_DISCARD, $challenger_id);
+
+        self::notifyAllPlayers('cardRemoved', '', [
+            'player_id' => $challenger_id,
+            'card_id' => $selected_card['id'],
+            'from_zone' => 'hand'
+        ]);
         
         // Notify penalty
         self::notifyAllPlayers('truthPenaltyApplied',

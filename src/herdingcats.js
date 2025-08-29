@@ -873,10 +873,15 @@ function (dojo, declare) {
             console.log( 'notif_discardUpdate', args );
             
             const playerId = args.player_id;
-            const card = args.card;
+            const cards = args.discard_cards;
             
-            // Add card to discard pile
-            this.playerDiscards[playerId].addToStockWithId(card.type, card.id);
+            // Clear the discard pile and add all cards
+            if (this.playerDiscards[playerId]) {
+                this.playerDiscards[playerId].removeAll();
+                cards.forEach(card => {
+                    this.playerDiscards[playerId].addToStockWithId(card.type, card.id);
+                });
+            }
         },
 
         notif_cardRemoved: async function( args )
