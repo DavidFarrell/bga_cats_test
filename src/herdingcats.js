@@ -671,7 +671,7 @@ function (dojo, declare) {
             const args = this._penaltyArgs || {};
             const targetId = args.target_player_id;
             this.ajaxcall("/herdingcats/herdingcats/actSelectBlindFromChallenger.html", {
-                challenger_id: targetId,
+                player_id: targetId,
                 card_index: index,
                 lock: true
             }, this, function(result) {});
