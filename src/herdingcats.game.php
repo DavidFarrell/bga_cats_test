@@ -1494,6 +1494,8 @@ class HerdingCats extends Table
 
     function argAttackerSelectTruthfulPenalty()
     {
+        self::notifyAllPlayers('debug', 'argAttackerSelectTruthfulPenalty called', []);
+
         $pending = $this->pullPending();
         if (!$pending) {
             return [];
@@ -1521,12 +1523,16 @@ class HerdingCats extends Table
             ];
         }
         
-        return [
+        $args = [
             'pending_action' => $pending,
             'challengers' => $challenger_info,
             'actor_name' => self::getPlayerNameById($pending['actor_player_id']),
             'challenger_name' => self::getPlayerNameById($first_challenger_id)
         ];
+
+        self::notifyAllPlayers('debug', 'argAttackerSelectTruthfulPenalty args: '.json_encode($args), []);
+
+        return $args;
     }
 
     function argSelectTarget()
