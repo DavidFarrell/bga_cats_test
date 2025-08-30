@@ -357,6 +357,10 @@ function (dojo, declare) {
                     // Remove declared preview
                     var prev = $('hc_declared_preview'); if (prev) dojo.destroy(prev);
                     break;
+                case 'attackerSelectTruthfulPenalty':
+                case 'challengerSelectBluffPenalty':
+                    var ph = $('hc_penalty_hand'); if (ph) dojo.destroy(ph);
+                    break;
             }               
         }, 
 
@@ -834,16 +838,20 @@ function (dojo, declare) {
             const actualType = args.actual_card_type;
             const declaredType = args.declared_type;
             
+            const playerName = args.player_name || _('Player');
             if (wasBluffing) {
+                const actualLabel = actualType ? this.cardTypeNames[actualType] : _('unknown');
+                const declaredLabel = declaredType ? this.cardTypeNames[declaredType] : _('unknown');
                 this.showMessage(dojo.string.substitute(_('${player} was bluffing! Card was ${actual} not ${declared}'), {
-                    player: args.player_name,
-                    actual: this.cardTypeNames[actualType],
-                    declared: this.cardTypeNames[declaredType]
+                    player: playerName,
+                    actual: actualLabel,
+                    declared: declaredLabel
                 }), 'info');
             } else {
+                const declaredLabel = declaredType ? this.cardTypeNames[declaredType] : _('unknown');
                 this.showMessage(dojo.string.substitute(_('${player} was truthful! Card was indeed ${declared}'), {
-                    player: args.player_name,
-                    declared: this.cardTypeNames[declaredType]
+                    player: playerName,
+                    declared: declaredLabel
                 }), 'info');
             }
         },
@@ -876,13 +884,17 @@ function (dojo, declare) {
             console.log( 'notif_discardUpdate', args );
             
             const playerId = args.player_id;
-            const cards = args.discard_cards;
+            // Server may send either a full list under discard_cards or a single card under card
+            let cardsSpec = args.discard_cards !== undefined ? args.discard_cards : (args.card ? [args.card] : []);
+            // Support associative objects returned by PHP (id => card)
+            const cards = Array.isArray(cardsSpec) ? cardsSpec : Object.values(cardsSpec || {});
             
-            // Clear the discard pile and add all cards
             if (this.playerDiscards[playerId]) {
                 this.playerDiscards[playerId].removeAll();
                 cards.forEach(card => {
-                    this.playerDiscards[playerId].addToStockWithId(card.type, card.id);
+                    if (card && card.id !== undefined && card.type !== undefined) {
+                        this.playerDiscards[playerId].addToStockWithId(card.type, card.id);
+                    }
                 });
             }
         },

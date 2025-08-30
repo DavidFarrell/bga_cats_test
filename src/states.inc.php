@@ -100,7 +100,7 @@ $machinestates = [
 
     32 => GameStateBuilder::create()
         ->name('attackerSelectTruthfulPenalty')
-        ->description(clienttranslate('${actor_name} may discard one card from ${challenger_name}\'s hand'))
+        ->description(clienttranslate('${actor_name} may discard a card from ${challenger_name}\'s hand'))
         ->descriptionmyturn(clienttranslate('You may discard one card from ${challenger_name}\'s hand'))
         ->type(StateType::ACTIVE_PLAYER)
         ->args('argAttackerSelectTruthfulPenalty')
@@ -108,6 +108,7 @@ $machinestates = [
             'actSelectBlindFromChallenger'
         ])
         ->transitions([
+            'nextPlayer' => 95, // Assuming 95 is the state for next player/end of turn
             'penaltyApplied' => 40,  // Continue to target selection
             'zombie' => 40,  // Handle zombie players
         ])

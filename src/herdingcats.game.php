@@ -90,8 +90,7 @@ class HerdingCats extends Table
         //self::initStat('table', 'table_teststat1', 0);    // Init a table statistics
         //self::initStat('player', 'player_teststat1', 0);  // Init a player statistics
 
-        // Initialize pending_action table with empty row
-        self::DbQuery("INSERT INTO pending_action (id) VALUES (1)");
+        // Initialize pending_action table - no need for empty row with auto-increment
 
         // Setup deck for each player - each player gets their OWN 9-card subset
         $all_cards = [];
@@ -592,6 +591,36 @@ class HerdingCats extends Table
         return isset($players[$player_id]) ? $players[$player_id]['player_name'] : 'Unknown Player';
     }
     
+    function getPlayerName($player_id)
+    {
+        return $this->getPlayerNameById($player_id);
+    }
+    
+    function getCardTypeName($card_type)
+    {
+        $card_names = [
+            CARD_TYPE_KITTEN => clienttranslate('Kitten'),
+            CARD_TYPE_SHOWCAT => clienttranslate('Show Cat'),
+            CARD_TYPE_ALLEYCAT => clienttranslate('Alley Cat'),
+            CARD_TYPE_CATNIP => clienttranslate('Catnip'),
+            CARD_TYPE_ANIMALCONTROL => clienttranslate('Animal Control'),
+            CARD_TYPE_LASERPOINTER => clienttranslate('Laser Pointer')
+        ];
+        
+        return $card_names[$card_type] ?? clienttranslate('Unknown Card');
+    }
+    
+    function cardRequiresTargeting($card_type)
+    {
+        $targeting_cards = [
+            CARD_TYPE_ALLEYCAT,
+            CARD_TYPE_CATNIP,
+            CARD_TYPE_ANIMALCONTROL
+        ];
+        
+        return in_array($card_type, $targeting_cards);
+    }
+    
     //////////////////////////////////////////////////////////////////////////////
     //////////// Stage 5: Card Effect Helper Functions
     ////////////
@@ -1001,7 +1030,8 @@ class HerdingCats extends Table
     // TODO: Stage 3-5 action implementations will go here
     function actDeclare($card_id, $declared_type, $target_player_id = null)
     {
-        self::checkAction('declare');
+        // Match states.inc.php possible action name
+        self::checkAction('actDeclare');
         $player_id = self::getActivePlayerId();
         
         // Validate card is in player's hand
@@ -1022,7 +1052,6 @@ class HerdingCats extends Table
         // Store the action ID for later retrieval
         self::setGameStateValue('current_action_id', $action_id);
         
-        // SIMPLIFIED: Just play the card to the herd without bluffing/challenges
         // Move card from hand to herd (face down for now)
         $this->cards->moveCard($card_id, CARD_LOCATION_HERD_DOWN, $player_id);
         
@@ -1371,6 +1400,8 @@ class HerdingCats extends Table
         $this->gamestate->setPlayerNonMultiactive($player_id, 'challengeIntercept');
     }
 
+    // Removed duplicate actSelectBlindFromChallenger($card_id) definition (conflicted with index-based API)
+
     function actPassChallengeIntercept()
     {
         self::checkAction('passChallengeIntercept');
@@ -1489,6 +1520,37 @@ class HerdingCats extends Table
             'actor_id' => $actor_id,
             'actor_name' => self::getPlayerNameById($actor_id),
             'actor_hand_count' => count($actor_cards)
+        ];
+    }
+
+    function argAttackerSelectTruthfulPenalty()
+    {
+        $pending = $this->pullPending();
+        if (!$pending) {
+            error_log("argAttackerSelectTruthfulPenalty: pending is null");
+            return [];
+        }
+
+        $actor_id = $pending['actor_player_id'];
+        $challengers_csv = $pending['challengers'];
+        $challenger_ids = json_decode($challengers_csv, true);
+        $challenger_id = null;
+
+        if (is_array($challenger_ids) && !empty($challenger_ids)) {
+            $challenger_id = $challenger_ids[0]; // Assuming single challenger
+        }
+
+        error_log("argAttackerSelectTruthfulPenalty: pending: " . json_encode($pending));
+        error_log("argAttackerSelectTruthfulPenalty: actor_id: " . $actor_id);
+        error_log("argAttackerSelectTruthfulPenalty: challengers_csv: " . $challengers_csv);
+        error_log("argAttackerSelectTruthfulPenalty: challenger_id: " . $challenger_id);
+
+        return [
+            'pending_action' => $pending,
+            'actor_id' => $actor_id,
+            'actor_name' => self::getPlayerNameById($actor_id),
+            'challenger_id' => $challenger_id,
+            'challenger_name' => self::getPlayerNameById($challenger_id)
         ];
     }
 
@@ -1629,131 +1691,175 @@ class HerdingCats extends Table
     }    
     */
 
-    // TODO: Stage 3-5 state action implementations will go here
+    // State action methods - called automatically when entering certain game states
+    
+    function stEnterChallengeWindow()
+    {
+        // Set up multiple active players for challenge window
+        // All players except the actor can challenge
+        $actor_id = $this->getActivePlayerId();
+        $all_players = $this->loadPlayersBasicInfos();
+        
+        $challengeable_players = [];
+        foreach ($all_players as $player_id => $player) {
+            if ($player_id != $actor_id) {
+                $challengeable_players[] = $player_id;
+            }
+        }
+        
+        // Activate all non-actor players for potential challenges
+        $this->gamestate->setPlayersMultiactive($challengeable_players, '', true);
+        
+        // Notify players about the challenge window
+        $pending = $this->pullPending();
+        if ($pending) {
+            $declared_type = $pending['declared_identity'];
+            $this->notifyAllPlayers('challengeWindow', 
+                clienttranslate('${player_name} declared ${card_name}. Players may challenge this declaration.'), 
+                [
+                    'player_id' => $actor_id,
+                    'player_name' => $all_players[$actor_id]['player_name'],
+                    'declared_type' => $declared_type,
+                    'card_name' => $this->getCardTypeName($declared_type)
+                ]
+            );
+        }
+    }
+    
     function stResolveChallenge()
     {
         $pending = $this->pullPending();
         if (!$pending) {
-            throw new feException("No pending action to resolve");
+            throw new feException("No pending action to resolve challenge");
         }
         
-        // Get the actual card that was declared
-        $declared_card = $this->cards->getCard($pending['played_card_id']);
+        // Get card details
+        $card = $this->cards->getCard($pending['played_card_id']);
         $declared_type = $pending['declared_identity'];
-        $actual_type = $declared_card['type'];
+        $actual_type = $card['type'];
+        $actor_id = $pending['actor_player_id'];
+        $challengers = isset($pending['challengers']) ? $pending['challengers'] : [];
+        
+        if (empty($challengers)) {
+            // No challenges, proceed to target selection or end
+            $this->gamestate->nextState('goToTarget');
+            return;
+        }
         
         // Check if declaration was truthful
-        $is_bluff = ($actual_type != $declared_type);
+        $was_bluffing = ($declared_type != $actual_type);
         
-        if ($is_bluff) {
-            // Bluff detected - challengers win
-            self::notifyAllPlayers('challengeResolved',
-                clienttranslate('Challenge succeeded! ${actor_name} was bluffing.'),
+        if ($was_bluffing) {
+            // Player was bluffing - challenger wins
+            $this->notifyAllPlayers('challengeResult', 
+                clienttranslate('Challenge successful! ${player_name} was bluffing about ${declared_card}.'), 
                 [
-                    'challenge_result' => 'succeeded',
-                    'actor_id' => $pending['actor_player_id'],
-                    'actor_name' => self::getPlayerNameById($pending['actor_player_id']),
-                    'actual_card' => $this->getCardName($actual_type),
-                    'declared_card' => $this->getCardName($declared_type),
-                    'is_bluff' => true
+                    'player_name' => $this->getPlayerName($actor_id),
+                    'declared_card' => $this->getCardTypeName($declared_type),
+                    'actual_card' => $this->getCardTypeName($actual_type),
+                    'bluffing' => true
                 ]
             );
             
-            // Private notification to reveal actual card to all players
-            self::notifyAllPlayers('cardRevealed',
-                clienttranslate('The actual card was ${card_name}'),
-                [
-                    'card_id' => $pending['played_card_id'],
-                    'card_type' => $actual_type,
-                    'card_name' => $this->getCardName($actual_type),
-                    'revealed_to' => 'all'
-                ]
-            );
-            
-            // Set active player to first challenger for penalty selection
-            $challengers = json_decode($pending['challengers'], true);
-            $this->gamestate->changeActivePlayer($challengers[0]);
-            $this->gamestate->nextState('challengeSucceeded');
+            // Choose first challenger to apply penalty
+            $challenger_id = $challengers[0];
+            $this->gamestate->changeActivePlayer($challenger_id);
+            $this->gamestate->nextState('bluffCaught');
         } else {
-            // Truth - actor wins
-            self::notifyAllPlayers('challengeResolved',
-                clienttranslate('Challenge failed! ${actor_name} was telling the truth.'),
+            // Player was truthful - challengers pay penalty
+            $this->notifyAllPlayers('challengeResult', 
+                clienttranslate('Challenge failed! ${player_name} was truthful about ${declared_card}.'), 
                 [
-                    'challenge_result' => 'failed',
-                    'actor_id' => $pending['actor_player_id'],
-                    'actor_name' => self::getPlayerNameById($pending['actor_player_id']),
-                    'revealed_card' => $this->getCardName($actual_type),
-                    'is_bluff' => false
+                    'player_name' => $this->getPlayerName($actor_id),
+                    'declared_card' => $this->getCardTypeName($declared_type),
+                    'bluffing' => false
                 ]
             );
             
-            // Private notification to reveal actual card to all players
-            self::notifyAllPlayers('cardRevealed',
-                clienttranslate('The actual card was ${card_name}'),
-                [
-                    'card_id' => $pending['played_card_id'],
-                    'card_type' => $actual_type,
-                    'card_name' => $this->getCardName($actual_type),
-                    'revealed_to' => 'all'
-                ]
-            );
-            
-            // Set active player back to actor for penalty selection
-            $this->gamestate->changeActivePlayer($pending['actor_player_id']);
+            // Actor can choose to penalize one challenger
+            $this->gamestate->changeActivePlayer($actor_id);
             $this->gamestate->nextState('challengeFailed');
         }
     }
-
+    
+    function stEnterSelectTarget()
+    {
+        $pending = $this->pullPending();
+        if (!$pending) {
+            throw new feException("No pending action for target selection");
+        }
+        
+        $declared_type = $pending['declared_identity'];
+        $actor_id = $pending['actor_player_id'];
+        
+        // Check if this card type requires targeting
+        if (!$this->cardRequiresTargeting($declared_type)) {
+            // No targeting needed, proceed to effect resolution
+            $this->gamestate->nextState('noTargeting');
+            return;
+        }
+        
+        // Notify that target selection is needed
+        $this->notifyAllPlayers('targetSelectionRequired', 
+            clienttranslate('${player_name} must select a target for ${card_name}.'), 
+            [
+                'player_name' => $this->getPlayerName($actor_id),
+                'card_name' => $this->getCardTypeName($declared_type)
+            ]
+        );
+    }
+    
     function stResolveInterceptChallenge()
     {
         $pending = $this->pullPending();
-        if (!$pending || !isset($pending['intercept_declared_by'])) {
-            throw new feException("No intercept to resolve");
+        if (!$pending) {
+            throw new feException("No pending action to resolve intercept challenge");
         }
         
-        // Get the intercept card from limbo
-        $intercept_cards = $this->cards->getCardsInLocation(CARD_LOCATION_LIMBO, $pending['intercept_declared_by']);
-        if (empty($intercept_cards)) {
-            throw new feException("Intercept card not found in limbo");
+        $intercept_challengers = isset($pending['intercept_challengers']) ? $pending['intercept_challengers'] : [];
+        
+        if (empty($intercept_challengers)) {
+            // No challenges to intercept, proceed
+            $this->gamestate->nextState('interceptGoToResolve');
+            return;
         }
-        $intercept_card = array_values($intercept_cards)[0];
+        
+        $intercept_player_id = $pending['intercept_player_id'];
+        $intercept_card_id = $pending['intercept_card_id'];
+        
+        // Get the intercept card to check if it's actually a Laser Pointer
+        $intercept_card = $this->cards->getCard($intercept_card_id);
         $is_laser_pointer = ($intercept_card['type'] == CARD_TYPE_LASERPOINTER);
         
         if (!$is_laser_pointer) {
-            // Intercept was a bluff - challengers win
-            self::notifyAllPlayers('interceptChallengeSucceeded',
-                clienttranslate('Intercept challenge succeeded! ${interceptor_name} was bluffing about Laser Pointer.'),
+            // Intercepter was bluffing
+            $this->notifyAllPlayers('interceptChallengeResult', 
+                clienttranslate('Intercept challenge successful! ${player_name} was bluffing about Laser Pointer.'), 
                 [
-                    'interceptor_id' => $pending['intercept_declared_by'],
-                    'interceptor_name' => self::getPlayerNameById($pending['intercept_declared_by']),
-                    'actual_card' => $this->getCardName($intercept_card['type'])
+                    'player_name' => $this->getPlayerName($intercept_player_id),
+                    'bluffing' => true
                 ]
             );
             
-            // Discard the fake laser pointer
-            $this->cards->moveCard($intercept_card['id'], CARD_LOCATION_DISCARD, $pending['intercept_declared_by']);
-            $this->notifyHandCounts();
-            $this->notifyDiscardUpdate($pending['intercept_declared_by']);
-            
-            // Set active player to first intercept challenger for penalty selection
-            $intercept_challengers = json_decode($pending['intercept_challengers'], true);
-            $this->gamestate->changeActivePlayer($intercept_challengers[0]);
-            $this->gamestate->nextState('interceptChallengeSucceeded');
+            // Choose first challenger to apply penalty
+            $challenger_id = $intercept_challengers[0];
+            $this->gamestate->changeActivePlayer($challenger_id);
+            $this->gamestate->nextState('interceptBluffCaught');
         } else {
-            // Truth - interceptor wins
-            self::notifyAllPlayers('interceptChallengeFailed',
-                clienttranslate('Intercept challenge failed! ${interceptor_name} really has Laser Pointer.'),
+            // Intercepter was truthful
+            $this->notifyAllPlayers('interceptChallengeResult', 
+                clienttranslate('Intercept challenge failed! ${player_name} really had Laser Pointer.'), 
                 [
-                    'interceptor_id' => $pending['intercept_declared_by'],
-                    'interceptor_name' => self::getPlayerNameById($pending['intercept_declared_by'])
+                    'player_name' => $this->getPlayerName($intercept_player_id),
+                    'bluffing' => false
                 ]
             );
             
-            // Set active player to interceptor for penalty selection
-            $this->gamestate->changeActivePlayer($pending['intercept_declared_by']);
+            // Effect is cancelled, proceed to resolution
             $this->gamestate->nextState('interceptChallengeFailed');
         }
     }
+    
 
     function stRevealAndResolve()
     {
@@ -1958,8 +2064,19 @@ class HerdingCats extends Table
                     break;
                     
                 case "attackerSelectTruthfulPenalty":
-                    // TODO: Auto-select penalty cards from challengers
-                    throw new feException("Zombie handling for attackerSelectTruthfulPenalty not implemented yet - Stage 3");
+                    $pending = $this->pullPending();
+                    $actor_id = $pending['actor_player_id'];
+                    $challenger_id = json_decode($pending['challengers'], true)[0]; // Assuming single challenger for now
+
+                    self::setArgs(
+                        array(
+                            'actor_name' => self::getPlayerNameById($actor_id),
+                            'challenger_name' => self::getPlayerNameById($challenger_id)
+                        )
+                    );
+                    // The state description in states.inc.php will now use these names.
+
+                    // The game will now wait for actSelectBlindFromChallenger action from the actor.
                     break;
                     
                 case "selectTarget":

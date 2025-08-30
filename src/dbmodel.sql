@@ -33,9 +33,10 @@ CREATE TABLE IF NOT EXISTS `card` (
   PRIMARY KEY (`card_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1;
 
--- Pending action tracking (single row table)
+-- Pending action tracking (multi-row table with auto-increment)
 CREATE TABLE IF NOT EXISTS `pending_action` (
-  `id` int(1) NOT NULL DEFAULT 1,
+  `action_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `game_id` int(10) DEFAULT NULL,
   `actor_player_id` int(10) DEFAULT NULL,
   `declared_identity` int(11) DEFAULT NULL,
   `played_card_id` int(10) DEFAULT NULL,
@@ -47,5 +48,6 @@ CREATE TABLE IF NOT EXISTS `pending_action` (
   `intercept_zone` varchar(16) DEFAULT NULL,
   `intercept_card_id` int(10) DEFAULT NULL,
   `intercept_challengers` varchar(255) DEFAULT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+  `phase` int(11) DEFAULT NULL,
+  PRIMARY KEY (`action_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1;

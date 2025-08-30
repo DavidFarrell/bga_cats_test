@@ -345,11 +345,22 @@ class Game extends \Bga\GameFramework\Table
 
     public function argAttackerSelectTruthfulPenalty(): array
     {
+        $actor  = (int)$this->getGameStateValue(self::G_ACTOR);
         $target = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
-        return [
-            'target_player_id' => $target,
-            'hand_count' => 7,
+        $args = [
+            'target_player_id'  => $target,
+            'hand_count'        => 7,
+            'actor_id'          => $actor,
+            'actor_name'        => $this->getPlayerNameById($actor),
+            'challenger_id'     => $target,
+            'challenger_name'   => $this->getPlayerNameById($target),
         ];
+        // Provide a challengers array to satisfy current client code path
+        $args['challengers'] = [[
+            'player_id' => $target,
+            'hand_count' => 7,
+        ]];
+        return $args;
     }
 
     // removed placeholder argSelectTarget (see the fully implemented version below)
@@ -412,7 +423,11 @@ class Game extends \Bga\GameFramework\Table
     {
         // First challenger triggers the challenged transition
         $this->checkAction('actChallenge');
-        $player_id = (int)$this->getActivePlayerId(); // active is actor; challengers are multiactive
+        // The challenger is the current player (not the active actor!)
+        $challenger_id = (int)$this->getCurrentPlayerId();
+        // Store challenger so we can reference in resolve/penalty state
+        $this->setGameStateValue(self::G_TARGET_PLAYER, $challenger_id);
+        // Close the challenge window and proceed to resolve
         $this->gamestate->setAllPlayersNonMultiactive('challenged');
     }
 
@@ -454,48 +469,105 @@ class Game extends \Bga\GameFramework\Table
 
     public function stResolveChallenge(): void
     {
-        $actor = (int)$this->getActivePlayerId();
-        $decl  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
-        $card  = (int)$this->getGameStateValue(self::G_PENDING_CARD);
-        // Derive a temporary actual type from the dummy card id range (100..)
-        $actual = (($card - 100) % 6 + 6) % 6 + 1;
+        // Minimal resolution for prototype: use stored pending + target to drive next state
+        $actor     = (int)$this->getGameStateValue(self::G_ACTOR);
+        $declared  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        $challenger = (int)$this->getGameStateValue(self::G_TARGET_PLAYER); // set in actChallenge
 
-        $isBluff = ($decl !== $actual);
+        if ($challenger === 0) {
+            // Nobody challenged: go on
+            if ($this->requiresTarget($declared)) {
+                $this->gamestate->nextState('goToTarget'); // mapped to 40 in states
+            } else {
+                $this->gamestate->nextState('challengeFailed'); // jump to add/reveal path via transitions
+            }
+            return;
+        }
 
-        $this->notify->all('challengeResolved', clienttranslate('${player_name}\'s declaration was ${result}'), [
-            'player_id'   => $actor,
-            'player_name' => $this->getPlayerNameById($actor),
-            'result'      => $isBluff ? 'a bluff' : 'truthful',
+        // Force a loss for the challenger in this prototype so we can reach penalty UI
+        // i.e., the declaration is considered truthful
+        $this->notify->all('challengeResult', '', [
+            'player_name'    => $this->getPlayerNameById($actor),
+            'declared_type'  => $declared,
+            'was_bluffing'   => false,
         ]);
 
-        if ($isBluff) {
-            // Move control to a challenger for penalty selection (pick first non-actor)
-            $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
-            foreach ($players as $p) {
-                $pid = (int)$p['id'];
-                if ($pid !== $actor) { $this->gamestate->changeActivePlayer($pid); break; }
-            }
-            // challenger picks from actor's hand
-            $this->setGameStateValue(self::G_TARGET_PLAYER, (int)$this->getGameStateValue(self::G_ACTOR));
-            $this->setGameStateValue(self::G_TARGET_ZONE, 1);
-            $this->gamestate->nextState('bluffCaught');
-        } else {
-            // Actor continues
-            $this->gamestate->changeActivePlayer($actor);
-            // actor picks from a challenger
-            $penalized = 0;
-            $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
-            foreach ($players as $p) { $pid = (int)$p['id']; if ($pid !== $actor) { $penalized = $pid; break; } }
-            $this->setGameStateValue(self::G_TARGET_PLAYER, $penalized);
-            $this->setGameStateValue(self::G_TARGET_ZONE, 1);
-            $this->gamestate->nextState('challengeFailed');
-        }
+        // Active player (actor) may discard one card from opponent hand
+        $this->gamestate->changeActivePlayer($actor);
+        $this->gamestate->nextState('challengeFailed');
     }
 
     public function stResolveInterceptChallenge(): void
     {
-        // Minimal: proceed to reveal/resolve
-        $this->gamestate->nextState('interceptGoToResolve');
+        $p = $this->pullPending();
+        $defender = intval($p['intercept_by_player_id']);
+        $zone = intval($p['intercept_zone']);
+        $card = $this->cards->getCard(intval($p['intercept_card_id']));
+        $challengers = $this->csvToIds($p['intercept_challengers_csv']);
+
+        // Truth test
+        $truth = false;
+        if ($zone === HC_TZ_HAND) {
+            $truth = ($card['location'] === 'hand' && intval($card['location_arg']) === $defender && intval($card['type_arg']) === HC_TYPE_LASERPOINTER);
+        } else {
+            $truth = (in_array($card['location'], ['herd','herd_faceup']) && intval($card['location_arg']) === $defender && intval($card['type']) === HC_TYPE_LASERPOINTER);
+        }
+
+        if (count($challengers) === 0) {
+            // Nobody challenged: treat as truthful
+            $truth = true;
+        }
+
+        if ($truth) {
+            // Discard the selected card face-up
+            $this->cards->moveCard($card['id'], 'discard', $defender);
+            $this->notify->all('discardPublic', clienttranslate('${player_name} discards a Laser Pointer to intercept'), [
+                'player_id' => $defender,
+                'player_name' => $this->getPlayerNameById($defender),
+                'card' => $card
+            ]);
+            $this->incStat(1, 'laserIntercepts', $defender);
+
+            // Each challenger discards a blind card selected by defender
+            foreach ($challengers as $cid) {
+                // Choose randomly for now in this automatic resolution state.
+                // Follow-up: You can add an extra state if you want the defender to pick specific slots one by one.
+                $hand = array_values($this->cards->getCardsInLocation('hand', $cid));
+                if (count($hand) > 0) {
+                    $pick = $hand[bga_rand(0, count($hand)-1)];
+                    $this->cards->moveCard($pick['id'], 'discard', $cid);
+                    $this->notify->all('discardPublic', clienttranslate('${victim} discards a blind card due to intercept'), [
+                        'victim' => $this->getPlayerNameById($cid),
+                        'card' => $pick
+                    ]);
+                }
+            }
+
+            // Attack is cancelled, but attacker still places their played card to herd
+            $this->gamestate->nextState('toAddToHerd');
+        } else {
+            // Lie: discard the selected card anyway, plus extra blind chosen by first challenger
+            $first = $challengers[0];
+            $this->cards->moveCard($card['id'], 'discard', $defender);
+            $this->notify->all('discardPublic', clienttranslate('${player_name} discards the falsely presented card'), [
+                'player_id' => $defender,
+                'player_name' => $this->getPlayerNameById($defender),
+                'card' => $card
+            ]);
+
+            $hand = array_values($this->cards->getCardsInLocation('hand', $defender));
+            if (count($hand) > 0) {
+                $pick = $hand[bga_rand(0, count($hand)-1)];
+                $this->cards->moveCard($pick['id'], 'discard', $defender);
+                $this->notify->all('discardPublic', clienttranslate('${player_name} also discards a blind card due to a wrong intercept claim'), [
+                    'player_id' => $defender,
+                    'player_name' => $this->getPlayerNameById($defender),
+                    'card' => $pick
+                ]);
+            }
+            // Original attack resumes
+            $this->gamestate->nextState('toRevealAndResolve');
+        }
     }
 
     public function stRevealAndResolve(): void
@@ -559,6 +631,27 @@ class Game extends \Bga\GameFramework\Table
     {
         $this->checkAction('actSelectBlindFromChallenger');
         $actor = (int)$this->getActivePlayerId();
+        // Derive a dummy card id/type for the target's hand (ids 100..)
+        $card_id = 100 + max(0, $card_index);
+        $card_type = (($card_id - 100) % 6) + 1;
+
+        // Notify removal from target's hand and add to discard (visual only)
+        $this->notify->all('cardRemoved', '', [
+            'player_id' => $player_id,
+            'card_id'   => $card_id,
+            'from_zone' => 'hand',
+        ]);
+        $this->notify->all('discardUpdate', '', [
+            'player_id' => $player_id,
+            'card' => [ 'id' => $card_id, 'type' => $card_type ],
+        ]);
+
+        // Hand counts (placeholder)
+        $counts = $this->getHandCounts();
+        if (isset($counts[$player_id]) && $counts[$player_id] > 0) { $counts[$player_id]--; }
+        $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+
+        // Log
         $this->notify->all('truthPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
             'player_id'   => $actor,
             'player_name' => $this->getPlayerNameById($actor),
@@ -574,6 +667,25 @@ class Game extends \Bga\GameFramework\Table
         $this->checkAction('actSelectBlindFromActor');
         $actor = (int)$this->getActivePlayerId();
         $fromPlayer = (int)$this->getGameStateValue(self::G_ACTOR);
+
+        // Derive dummy id/type for actor's hand
+        $card_id = 100 + max(0, $card_index);
+        $card_type = (($card_id - 100) % 6) + 1;
+
+        $this->notify->all('cardRemoved', '', [
+            'player_id' => $fromPlayer,
+            'card_id'   => $card_id,
+            'from_zone' => 'hand',
+        ]);
+        $this->notify->all('discardUpdate', '', [
+            'player_id' => $fromPlayer,
+            'card' => [ 'id' => $card_id, 'type' => $card_type ],
+        ]);
+
+        $counts = $this->getHandCounts();
+        if (isset($counts[$fromPlayer]) && $counts[$fromPlayer] > 0) { $counts[$fromPlayer]--; }
+        $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+
         $this->notify->all('bluffPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
             'player_id'   => $actor,
             'player_name' => $this->getPlayerNameById($actor),

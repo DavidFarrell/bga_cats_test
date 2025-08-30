@@ -78,7 +78,7 @@
 - **Event Handling**: Ready for JavaScript implementation
 - **Data Attributes**: Cards use `data-card-id` and `data-card-type`
 
-## 🎯 Game-Specific Features
+## 🎯 Game-Specific Features 
 
 ### Card Effects Visualization
 - **Face-down cards**: Use cardback.jpeg background
