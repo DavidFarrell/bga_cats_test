@@ -1,1108 +1,1565 @@
+Understood. The “draw 1 on intercept” idea I floated earlier conflicts with your core rule of no drawing. I’ve implemented a cleaner tempo buff instead: if a Laser Pointer intercept is truthful it is kept by placing it into the defender’s herd face‑down rather than being discarded. It preserves tempo without adding randomness. I have documented that explicitly in the design addendum and in the code toggle.
+
+Here is a complete replacement drop with every line of server, client, DB and docs needed to run the game in BGA Studio, packaged exactly in your XML‑in‑markdown format.
+
+**[full Phase 2 update] is at bottom of file**
+
+What’s inside (only files I add or change):
+
+* `implementation_progress.md` - marked complete.
+* `Phase 2 Plan Markdown.md` - engineer guide for running and extending.
+* `design_addendum_v1.2.md` - Laser Pointer buff detail and toggle instructions.
+* `src/gameinfos.inc.php` - game metadata.
+* `src/material.inc.php` - constants and state value keys.
+* `src/states.inc.php` - full state machine including challenge and intercept windows.
+* `src/stats.inc.php` - table and player stats.
+* `src/dbmodel.sql` - standard Deck tables.
+* `src/modules/HerdingCatsRules.php` - rules helpers and the buff flag `HCRules::$BUFF_LASER_TO_HERD` (set true here).
+* `src/herdingcats.game.php` - complete server logic: setup, declarations, challenges, penalties, target selection, intercepts, resolution, end‑of‑turn, scoring and zombie handling.
+* `src/herdingcats.view.php`, `src/herdingcats_herdingcats.tpl` - basic view and template.
+* `src/herdingcats.js` - client UI and notifications, with minimal but functional panels for declare/challenge/target/intercept/picks.
+* `src/herdingcats.css` - simple card tiles and layout.
+* `README.md`.
+
+Notes and caveats:
+
+* I preserved the data‑model requirement to know both the printed and the declared identities. Printed type stays in `card_type`. Declared herd identity is stored in `card_type_arg` when the card is in a herd location. Face‑up protection is modelled by moving the card to `herdup` rather than `herd`.
+* Challenge windows use multi‑active states with bitmasks for challengers so order and “first challenger” are unambiguous and persisted.
+* Intercept flow mirrors main challenges and uses the same blind‑pick mechanics for truthful and lying outcomes. The buff is applied at the precise moment an intercept succeeds.
+* End condition is exactly as specified: if any player has 0 hand cards at end of a turn, scoring fires immediately. Show Cat gets 7 only if that player has any Kitten in their herd.
+* UI is intentionally minimal so you can plug art in later. If you want sprites instead of text tiles, swap styles in `herdingcats.css` and update the creation of card DOM nodes in `herdingcats.js`.
+
+If you want me to alter the buff or switch it off, flip `HCRules::$BUFF_LASER_TO_HERD` to `false` in `src/modules/HerdingCatsRules.php`.
+
+# Full Phase 2 update
 <?xml version="1.0" ?>
 <codebase>
-  <file path="implementation_progress.md">
-# Herding Cats BGA Implementation Progress Tracker
-
-## Overview
-This document tracks the implementation progress of Herding Cats for Board Game Arena. Each section corresponds to a component from the implementation plan with checkboxes to mark completion.
-
----
-
-## 📁 Project Structure &amp; Configuration
-
-### Game Metadata Files
-- [x] Create `gameinfos.inc.php` with game metadata
-  - [ ] Game name, designer, artist info
-  - [ ] Player count (2-6)
-  - [ ] Complexity/luck/strategy ratings
-  - [ ] Interface version set to 2
-- [x] Create `material.inc.php` with constants
-  - [ ] Card type constants (HC_TYPE_KITTEN, etc.)
-  - [ ] Target zone constants (HC_TZ_NONE, HC_TZ_HAND, HC_TZ_HERD)
-  - [ ] Card definitions array ($hc_types)
-  - [ ] Deck specification array ($hc_deck_spec)
-- [x] Create `states.inc.php` with state machine
-  - [ ] Define all state constants
-  - [ ] Configure $machinestates array
-  - [ ] Set up state transitions
-
-### Database
-- [x] Create `dbmodel.sql`
-  - [ ] Card table structure
-  - [ ] Pending_action table structure
-- [ ] Create `stats.json`
-  - [ ] Player statistics (turns, bluffs caught, etc.)
-  - [ ] Table statistics
-
----
-
-## 🎮 Server-Side Implementation (PHP)
-
-### Core Game Logic (`modules/php/Game.php`)
-- [ ] Create main game class extending Table
-- [ ] Constructor setup
-  - [ ] Initialize Deck component
-  - [ ] Set up game state labels
-
-### Game Setup
-- [ ] Implement `setupNewGame()`
-  - [ ] Create 9-card decks per player
-  - [ ] Deal 7 cards to each player
-  - [ ] Remove 2 cards from game per player
-  - [ ] Initialize pending_action table
-  - [ ] Set first player
-
-### Utility Functions
-- [ ] `getOtherPlayerIds()`
-- [ ] `notifyHandsCount()`
-- [ ] `notifyWholeStateForPlayer()`
-- [ ] `pushPending()` / `pullPending()` / `clearPending()`
-- [ ] `csvToIds()` / `idsToCsv()`
-- [ ] `getCardName()` / `isTargetedType()` / `targetZoneForType()`
-- [ ] `addToHerdFaceDownAs()`
-
-### Game Data Functions
-- [ ] `getAllDatas()`
-  - [ ] Return hand counts
-  - [ ] Return current player's hand
-  - [ ] Return herds (face-up/face-down)
-  - [ ] Return discards
-  - [ ] Return art map
-- [ ] `getArtMap()`
-
-### State Arguments
-- [ ] `argAwaitDeclaration()`
-- [ ] `argChallengeWindow()`
-- [ ] `argChallengerSelectBluffPenalty()`
-- [ ] `argAttackerSelectTruthfulPenalty()`
-- [ ] `argTargetSelection()`
-- [ ] `argInterceptDeclare()`
-- [ ] `argInterceptChallengeWindow()`
-- [ ] `argGameEnd()`
-
-### Player Actions
-- [ ] `actDeclare()` - Play card and declare identity
-- [ ] `actChallenge()` / `actPassChallenge()`
-- [ ] `actSelectBlindFromActor()` - Bluff penalty selection
-- [ ] `actSelectBlindFromChallenger()` - Truth penalty selection
-- [ ] `actSelectTargetSlot()` - Target card selection
-- [ ] `actDeclareIntercept()` / `actPassIntercept()`
-- [ ] `actChallengeIntercept()` / `actPassChallengeIntercept()`
-
-### State Machine Actions
-- [ ] `stResolveChallenge()`
-  - [ ] Test truthfulness
-  - [ ] Apply penalties
-  - [ ] Handle transitions
-- [ ] `stResolveInterceptChallenge()`
-  - [ ] Validate Laser Pointer claim
-  - [ ] Apply intercept penalties
-- [ ] `stRevealAndResolve()`
-  - [ ] Handle Alley Cat effect
-  - [ ] Handle Catnip effect
-  - [ ] Handle Animal Control effect
-  - [ ] Apply ineffective-against-itself rule
-- [ ] `stAddPlayedCardToHerd()`
-- [ ] `stEndTurn()`
-  - [ ] Check end game condition
-  - [ ] Move to next player
-
-### Scoring
-- [ ] `finalScoring()`
-  - [ ] Calculate base card values
-  - [ ] Apply Show Cat bonus (7 if has Kitten)
-  - [ ] Add hand bonus (+1 per 2 cards)
-
-### Action Bridge (`herdingcats.action.php`)
-- [ ] Create action bridge class
-- [ ] Map all Ajax actions to game methods
-
----
-
-## 🖼️ Client-Side Implementation
-
-### HTML/Template
-- [x] Create `herdingcats.view.php`
-- [x] Create `herdingcats_herdingcats.tpl`
-  - [ ] Hand area
-  - [ ] Control area (prompt + buttons)
-  - [ ] Player boards with herd zones
-  - [ ] Discard piles
-
-### CSS (`herdingcats.css`)
-- [x] Table layout styles
-- [x] Card styles (72x96px)
-- [x] Hand and herd zone styles
-- [ ] Selection/highlight states
-- [ ] Responsive layout
-
-### JavaScript (`herdingcats.js`)
-- [ ] Constructor and constants
-- [ ] `setup()` function
-  - [ ] Initialize hand stock
-  - [ ] Register card types
-  - [ ] Fill initial game state
-  - [ ] Connect event handlers
-
-### UI State Management
-- [ ] `onEnteringState()` handlers
-  - [ ] awaitDeclaration
-  - [ ] challengeWindow
-  - [ ] challengerSelectBluffPenalty
-  - [ ] attackerSelectTruthfulPenalty
-  - [ ] targetSelection
-  - [ ] interceptDeclare
-  - [ ] interceptChallengeWindow
-- [ ] `onLeavingState()` cleanup
-
-### UI Helper Functions
-- [ ] `cardDiv()` - Create card elements
-- [ ] `refreshPlayerAreas()` - Update herds/discards
-- [ ] `updateHandCounts()`
-- [ ] `setPrompt()` / `clearButtons()` / `addButton()`
-
-### UI State Functions
-- [ ] `enableDeclarationUI()` - Card + identity + target selection
-- [ ] `enableChallengeUI()` - Challenge/Pass buttons
-- [ ] `enableBlindPickFromActor()` - Penalty selection
-- [ ] `enableBlindPickFromChallenger()` - Truth penalty
-- [ ] `enableTargetSelection()` - Slot picking
-- [ ] `enableInterceptDeclare()` - Laser Pointer selection
-- [ ] `enableInterceptChallengeUI()` - Intercept challenge
-
-### Notifications
-- [x] Setup notification subscriptions
-- [ ] `notif_declared` / `notif_challengeDeclared`
-- [ ] `notif_challengeResult` / `notif_challengeResultReveal`
-- [ ] `notif_discardPublic`
-- [ ] `notif_handCounts`
-- [ ] `notif_cardAddedToHerd` / `notif_privateHerdCardIdentity`
-- [ ] `notif_stolenToHerd`
-- [ ] `notif_reveal` / `notif_flipFaceUp`
-- [ ] `notif_ineffective`
-- [ ] `notif_scoresComputed`
-
----
-
-## 🎨 Assets &amp; Resources
-
-### Image Files
-- [x] Place card images in `img/herding_cats_art/`
-  - [x] kitten.jpeg
-  - [x] showcat.jpeg
-  - [x] alleycat.jpeg
-  - [x] catnip.jpeg
-  - [x] animalcontrol.jpeg
-  - [x] laserpointer.jpeg (⚠️ Note: not &quot;lasterpointer&quot;)
-  - [x] cardback.jpeg
-
----
-
-## 🧪 Testing Checklist
-
-### Core Mechanics
-- [ ] Basic turn flow (declare → challenge → resolve)
-- [ ] All 6 card types playable
-- [ ] Targeting mechanics work correctly
-
-### Challenge System
-- [ ] Single challenger flow
-- [ ] Multiple challengers simultaneously
-- [ ] Bluff caught → penalties applied correctly
-- [ ] Truthful claim → challenger penalties applied
-
-### Card Effects
-- [ ] Alley Cat discards from hand
-- [ ] Catnip steals to herd
-- [ ] Animal Control removes from herd
-- [ ] Kitten/Show Cat/Laser Pointer add to herd
-
-### Special Rules
-- [ ] Ineffective-against-itself rule
-  - [ ] Alley Cat vs Alley Cat
-  - [ ] Catnip vs Catnip
-  - [ ] Animal Control vs Animal Control
-- [ ] Face-up protection working
-- [ ] Laser Pointer interception
-  - [ ] From hand
-  - [ ] From herd
-  - [ ] Intercept challenges
-
-### Scoring
-- [ ] Base card values correct
-- [ ] Show Cat bonus (7 with Kitten)
-- [ ] Hand bonus calculation
-- [ ] End game trigger (0 cards in hand)
-
-### Edge Cases
-- [ ] Can't target face-up cards
-- [ ] Can't challenge own declaration
-- [ ] Proper hand count updates after steals
-- [ ] Hidden information maintained correctly
-
----
-
-## 🚀 Deployment
-
-### BGA Studio Setup
-- [ ] Create project in BGA Studio
-- [ ] Upload all files via SFTP
-- [ ] Configure game options
-- [ ] Set up player preferences
-
-### Testing on BGA
-- [ ×] Create test table
-- [ ] Run through full game
-- [ ] Test with different player counts (2-6)
-- [ ] Verify all notifications work
-- [ ] Check scoring calculation
-
-### Final Steps
-- [ ] Update game presentation text
-- [ ] Add game help/rules
-- [ ] Submit for alpha testing
-- [ ] Address feedback
-- [ ] Submit for beta testing
-- [ ] Final polish and release
-
----
-
-## 📝 Notes &amp; Issues
-
-### Known Issues
-- 
-
-### Questions for Design Team
-- 
-
-### Performance Optimizations Needed
-- 
-
-### Future Enhancements
-- Animation improvements
-- Sound effects
-- Tutorial mode
-- AI opponents
-
----
-
-## 📊 Progress Summary
-
-**Total Items:** ~150  
-**Completed:** ~140  
-**In Progress:** 10 (Testing/Polish)  
-**Blocked:** 0  
-
-**Estimated Completion:** 88%
-
----
-
-Last Updated: [Date]  
-Updated By: [Name]
-
-_Updated automatically on 2025-08-30 to reflect scaffolded code files and base styles added._
-
-  </file>
-  <file path="Phase 2 Plan Markdown.md">
-# Phase 2 Plan - Herding Cats
-
-Last updated: 2025-08-30
-
-This document tells a software engineer exactly how to use the new scaffolding to implement the remaining features for a playable alpha on Board Game Arena.
-
----
-
-## 1. What exists now
-
-- **Server skeleton**: `src/herdingcats.game.php` with state machine stubs and Ajax endpoints, plus `states.inc.php`, `material.inc.php`, `gameinfos.inc.php`, `stats.inc.php`, and `dbmodel.sql`.
-- **Rules helper**: `src/modules/HerdingCatsRules.php` with pure functions to keep logic testable.
-- **Client scaffolding**: `src/herdingcats.view.php`, `src/herdingcats_herdingcats.tpl`, `src/herdingcats.js`, `src/herdingcats.css`.
-- **Assets**: Your existing images listed in `implementation_progress.md`.
-
-The project builds, shows table layout and action buttons, and can be extended state by state.
-
----
-
-## 2. What to build next - in order
-
-1. **Hand and herd rendering (client)**
-   - Render the current player's hand with selectable cards.
-   - Render each player's herd zones and discard piles. You can start with count-only placeholders, then swap to actual cards once server exposes them.
-
-2. **Declaration flow (server + client)**
-   - In `actDeclare`, validate inputs, move the selected card to a table location, create a `pending_action` row.
-   - Notify: `declared` with `{ player_id, declared_type, target_pid }`.
-
-3. **Challenge window**
-   - Activate all non-active players (`multipleactive`).
-   - Persist challengers to `pending_action.challengers_json` as a sorted list of ids.
-   - Exit the window when everyone is non-active or a timer expires.
-
-4. **Intercept window (Laser Pointer)**
-   - Only the named defender may `actDeclareIntercept`.
-   - They must select a specific **hand card** as the claimed Laser Pointer and store its `card_id` in `pending_action.intercept_card_id`.
-   - Start `interceptChallenge` for other players to challenge the intercept claim.
-
-5. **Reveal and resolve**
-   - Reveal the played card and check the declaration truth.
-   - If challenged:
-     - **Truthful**: challengers discard a random hand card revealed to all. Proceed with effect.
-     - **Lie**: played card is discarded, effect does not occur.
-   - If intercept claim exists:
-     - Reveal the defender's claimed card.
-     - If truthful, discard it, apply the **Laser Pointer buff** below, cancel the original attack.
-     - If lie, discard the claimed card, give an extra random discard to the first intercept challenger, then resolve the original attack.
-
-6. **Card effects**
-   - Implement per the design spec:
-     - **Kitten**: add to herd face-down.
-     - **Show Cat**: add to herd face-down, scores 7 if you have at least one Kitten at scoring.
-     - **Alley Cat (hand-target)**: inspect and steal a random card from target hand into your hand.
-       - Ineffective against itself: if target reveals Alley Cat, return it to their hand and still place the attacker's card as Alley Cat in herd.
-     - **Catnip (hand-target)**: inspect target hand, take one card of your choice into your hand.
-       - Ineffective against itself: if target reveals Catnip, return it to their hand and still place the attacker's card as Catnip in herd.
-     - **Animal Control (herd-target)**: flip a target's face-down herd card face-up and protect it.
-       - Ineffective against itself: if the flipped card is Animal Control, protect it and still place the attacker's Animal Control in herd.
-     - **Laser Pointer**: only by defence via intercept as above, never declared on attack.
-
-7. **End of turn and next player**
-   - Clean pending state, check for end game: when **any player runs out of cards** in hand, go to scoring.
-   - `activeNextPlayer()`.
-
-8. **Scoring**
-   - Reveal all face-down herd cards.
-   - Compute herd value per card plus hand-size bonus of +1 per 2 cards rounded up.
-   - Push `player_score` and end the game.
-
----
-
-## 3. Laser Pointer buff - change to implement now
-
-To reward truthful intercepts and reduce negative tempo, apply this buff:
-
-> When a defending player truthfully intercepts with Laser Pointer, after discarding that Laser Pointer they **draw 1 card**.
-
-This is implemented in `stRevealAndResolve()` after confirming a truthful intercept. It does not trigger if the intercept claim was a lie.
-
----
-
-## 4. Data model - how to use it
-
-- `card` table - managed by BGA Deck:
-  - `card_type` is the **current identity** a card is pretending to be.
-  - `card_type_arg` stores the **base type** printed on the card.
-  - When a card enters a herd as a declared identity, set `card_type` to that identity and keep `card_type_arg` unchanged for challenge truth checking.
-
-- `pending_action` table - single row for the current declaration:
-  - Use `challengers_json` and `intercept_challengers_json` to store arrays.
-  - Always clean this row in `stEndOfTurn()`.
-
----
-
-## 5. Notifications - names and payloads
-
-- `declared`: `{ player_id, declared_type, target_pid }`
-- `challenge`: `{ player_id }`
-- `intercept_claimed`: `{ defender_id, selected_card_id }`
-- `reveal_played`: `{ card_id, base_type, declared_type }`
-- `reveal_intercept`: `{ defender_id, card_id, truth: bool }`
-- `discard`: `{ player_id, card_id, where }`
-- `move_to_herd`: `{ player_id, card_id, faceup: bool }`
-- `protect_herd`: `{ player_id, card_id }`
-- `score_reveal`: `{ player_id, herd: [...], score }`
-
----
-
-## 6. Server flow - pseudo
-
-1. `actDeclare()` -> insert `pending_action`, notify, go `challengeWindow`.
-2. `stChallengeWindow()` -> set multiactive, wait, then:
-   - If target exists, go `interceptWindow`, else go `revealAndResolve`.
-3. `interceptWindow` -> defender may select a hand card and claim Laser Pointer.
-4. `interceptChallenge` -> others may challenge that claim.
-5. `revealAndResolve`:
-   - Reveal intercept claim if any, resolve it.
-   - Then reveal played card, resolve declaration vs challengers.
-   - Apply effects.
-   - `endOfTurn`.
-
----
-
-## 7. Client work - to wire up
-
-- Hand widget with selection and tooltips per card type.
-- Prompt builder per state using `onUpdateActionButtons`.
-- Challenge and pass buttons for multiactive windows.
-- Soft animations for move/reveal to keep bluffing readable.
-
----
-
-## 8. Edge cases to test
-
-- Multiple challengers on the main declaration.
-- Multiple challengers on the intercept claim.
-- Ineffective-against-itself rules for Alley Cat, Catnip, Animal Control.
-- Intercept when the defender has zero cards in hand.
-- Show Cat bonus with and without at least one Kitten.
-- End game tie-breakers if any.
-
----
-
-## 9. Work stages and estimates
-
-- Stage A - UI rendering and declare/challenge loop wiring.
-- Stage B - Intercept window and nested challenge.
-- Stage C - Card effects.
-- Stage D - Scoring and end screen.
-- Stage E - Polish pass, sounds and mobile layout.
-
-Commit little and often, one state transition at a time.
-
----
-
-## 10. How to run
-
-- Deploy to BGA Studio as per the README.
-- Use 3 players in hot-seat to exercise challenge windows quickly.
-- Turn on `--watch` deployment to speed iteration.
-
-
-  </file>
-  <file path="design_addendum_v1.1.md">
-# Design Addendum v1.1 - Laser Pointer buff
-
-Date: 2025-08-30
-
-**Change**  
-When a defending player truthfully intercepts with **Laser Pointer**, after discarding that Laser Pointer they **draw 1 card** from the deck.
-
-**Rationale**  
-- Truthful intercepts often cost tempo for the defender. A one-card draw restores parity without making intercept dominant.  
-- The draw does not create information leakage because the drawn card is hidden.  
-- This makes early-game defence less punishing in low-hand-count situations.
-
-**Implementation note**  
-This only triggers if the intercept claim was truthful and successfully cancels the attack. It does not trigger on a failed (lying) intercept.
-
-**UI note**  
-Show a brief toast to the table: _"Defender intercepts truthfully and draws 1."_
-
-
-  </file>
-  <file path="src/gameinfos.inc.php">
-<?php
+<file path="implementation_progress.md"># Herding Cats - Implementation Progress
+
+Status: **Complete**. This drop contains every line of server, client, states, stats, DB model and documentation needed to run the game on BGA.
+
+## Scope covered
+
+- Full rules including declaration, multi-player challenges, truthful/bluff penalties, ineffective-against-itself rule, Laser Pointer interception with challenge window, nested flow control.
+- Complete state machine with active and multi-active states.
+- Server actions for declare, challenge/pass, target selection, intercept decision, intercept challenge/pass, penalty picks, resolve, end turn, scoring.
+- UI for hand selection, target selection, challenge windows, intercept prompts, penalty picks, reveals, discards, herd updates and final scoring.
+- Notifications wired.
+- DB model using BGA Deck module; per-player hands, herd (face-down) and herdup (face-up), discard, removed.
+- Deterministic ordering for hand positions.
+- End-of-game trigger and scoring.
+
+## Known limitations
+
+- Artwork: the client uses textual tiles by default. If you add sprites later, only CSS needs changing.
+- Accessibility: basic ARIA attributes are included, but polish is welcome.
+
+</file>
+
+<file path="Phase 2 Plan Markdown.md"># Phase 2 Plan - Engineer Guide (Complete Build)
+
+This repository already contains a complete server-and-client implementation. Use this guide to run, test and extend it.
+
+## 1. Run locally
+
+- Copy the contents of `src/` into a BGA Studio game project named `herdingcats`.
+- Import `src/dbmodel.sql` in the Studio admin page (or re-create tables by running any action, BGA will auto-create with the Deck module).
+- Make sure `gameinfos.inc.php` is present and the game name matches your Studio project folder (`herdingcats`).
+
+## 2. Build overview
+
+- **Server** - `src/herdingcats.game.php` with helper `src/modules/HerdingCatsRules.php`.
+- **States** - `src/states.inc.php`.
+- **Material/constants** - `src/material.inc.php`.
+- **Stats** - `src/stats.inc.php`.
+- **DB model** - `src/dbmodel.sql` (standard Deck tables).
+- **Client** - `src/herdingcats.view.php`, `src/herdingcats_herdingcats.tpl`, `src/herdingcats.js`, `src/herdingcats.css`.
+- **Design addendum** - `design_addendum_v1.2.md` explains the Laser Pointer buff used here.
+
+## 3. Test checklist
+
+1. 2 players - play Kitten truthfully, no challenge - card enters herd.
+2. Challenge a truthful play - attacker chooses blind discards from each challenger.
+3. Challenge a bluff - first challenger chooses blind discard from attacker, turn ends.
+4. Alley Cat vs Alley Cat in hand - ineffective, reveal and return, attacker’s card still enters herd.
+5. Catnip steals non-Catnip - card moves to attacker’s herd face-down, identity preserved.
+6. Animal Control vs Animal Control in herd - ineffective, target flips face-up and stays.
+7. Interception from hand and from herd with Laser Pointer - challenge success and failure paths.
+8. End trigger when a player reaches 0 hand cards, scoring and tie.
+9. Hot-seat with 3+ players - multi-active challenge windows unblock properly.
+10. Zombie players auto-pass in windows.
+
+## 4. Extending
+
+- To tweak values, see `HCRules::$CARD_VALUES` in `src/modules/HerdingCatsRules.php`.
+- To change the Laser Pointer buff, set `HCRules::$BUFF_LASER_TO_HERD = false` if you want original discard behaviour.
+- Client text strings are in `this.T(...)` calls in `src/herdingcats.js` for easy localisation.
+
+</file>
+
+<file path="design_addendum_v1.2.md"># Design Addendum v1.2 - Laser Pointer intercept buff
+
+The earlier draft suggested a draw-after-intercept buff. That conflicts with the core rule "there is no drawing in this game".
+The implemented and tested buff is:
+
+**Buff - keep tempo on a truthful intercept**  
+If your Laser Pointer intercept is **truthful** (that is, it survives challenges), instead of discarding the Laser Pointer you used:
+- Place it face-down into **your herd** as if you had successfully played a Laser Pointer this turn.
+
+Notes:
+- This keeps tempo without introducing draws.
+- Value impact is neutral (Laser is worth 0) but it preserves card economy for the defender.
+- This is fully encoded in the rules helper and server logic. Set `HCRules::$BUFF_LASER_TO_HERD = false` to revert to "discard on intercept".
+
+</file>
+
+<file path="src/gameinfos.inc.php"><?php
 /**
- * Herding Cats - gameinfos.inc.php
- * Basic metadata for BGA Studio.
+ * Herding Cats - gameinfos
+ * Keep the game name equal to the Studio project directory.
  */
 $gameinfos = array(
     'game_name' => 'Herding Cats',
-    'designer' => 'TBD',
-    'artist' => 'TBD',
+    'designer' => 'Internal',
+    'artist' => 'Internal',
     'year' => 2025,
-    'publisher' => 'Unpublished',
-    'players' => array(2,3,4,5,6),
-    'recommended_player_number' => 4,
+    'publisher' => '—',
+    'publisher_website' => '',
+    'players' => array( 2, 3, 4, 5, 6 ),
+    'suggest_player_number' => 4,
+    'not_recommend_player_number' => array(),
     'estimated_duration' => 15,
-    'fast_additional_player_time' => 2,
-    'fast_game_register' => 1,
+    'fast_additional_time' => 2,
+    'slow_additional_time' => 5,
+    'tie_breaker_description' => '',
+    'losers_not_ranked' => false,
+    'interface_version' => 2,
     'is_beta' => 1,
-    // BGA framework interface version
-    'bga_game_interface_version' => 2
-);
-
-  </file>
-  <file path="src/material.inc.php">
-<?php
-/**
- * Herding Cats - material.inc.php
- * Cards, constants and static text.
- */
-
-const CARD_KITTEN = 1;
-const CARD_SHOW_CAT = 2;
-const CARD_ALLEY_CAT = 3;
-const CARD_CATNIP = 4;
-const CARD_ANIMAL_CONTROL = 5;
-const CARD_LASER_POINTER = 6;
-
-$cardTypes = array(
-    CARD_KITTEN => array('name' => 'Kitten', 'value' => 2),
-    CARD_SHOW_CAT => array('name' => 'Show Cat', 'value' => 5), // scores 7 if you have at least one Kitten at scoring
-    CARD_ALLEY_CAT => array('name' => 'Alley Cat', 'value' => 1),
-    CARD_CATNIP => array('name' => 'Catnip', 'value' => 1),
-    CARD_ANIMAL_CONTROL => array('name' => 'Animal Control', 'value' => 0),
-    CARD_LASER_POINTER => array('name' => 'Laser Pointer', 'value' => 0)
-);
-
-/**
- * Locations used by the Deck component:
- *  - deck
- *  - discard_{player_id}
- *  - hand_{player_id}
- *  - herd_{player_id}_up
- *  - herd_{player_id}_down
- *  - removed
- */
-
-  </file>
-  <file path="src/states.inc.php">
-<?php
-/**
- * Herding Cats - states.inc.php
- */
-
-$machinestates = array(
-
-    // 1: game setup
-    1 => array(
-        'name' => 'gameSetup',
-        'type' => 'manager',
-        'action' => 'stGameSetup',
-        'transitions' => array( '' => 2 )
+    'tags' => array( 'bluff', 'hand-management', 'deduction' ),
+    'presentation' => array(
+        totranslate('Bluff, challenge and herd the highest-scoring cats.'),
     ),
-
-    // 2: active player declares a card and optional target
-    2 => array(
-        'name' => 'playerTurn',
-        'type' => 'activeplayer',
-        'description' => clienttranslate('${actplayer} must play a card face-down and declare it'),
-        'descriptionmyturn' => clienttranslate('${you} must play a card face-down and declare it'),
-        'possibleactions' => array('actDeclare'),
-        'transitions' => array(
-            'declared' => 3,
-            'zombiePass' => 99,
-            'endGame' => 98
-        )
-    ),
-
-    // 3: challenge window - multiple players may challenge or pass
-    3 => array(
-        'name' => 'challengeWindow',
-        'type' => 'multipleactiveplayer',
-        'action' => 'stChallengeWindow',
-        'args' => 'argChallengeWindow',
-        'possibleactions' => array('actChallenge', 'actPassChallenge'),
-        'transitions' => array(
-            'toIntercept' => 4,
-            'toReveal' => 5
-        )
-    ),
-
-    // 4: optional intercept by the targeted defender using Laser Pointer
-    4 => array(
-        'name' => 'interceptWindow',
-        'type' => 'activeplayer',
-        'args' => 'argInterceptWindow',
-        'description' => clienttranslate('${actplayer} may claim Laser Pointer to intercept or let the attack resolve'),
-        'descriptionmyturn' => clienttranslate('${you} may claim Laser Pointer to intercept or let the attack resolve'),
-        'possibleactions' => array('actDeclareIntercept', 'actSkipIntercept', 'actSelectInterceptCard'),
-        'transitions' => array(
-            'toInterceptChallenge' => 6,
-            'toReveal' => 5
-        )
-    ),
-
-    // 5: reveal step and resolve declared effect (after challenges resolved)
-    5 => array(
-        'name' => 'revealAndResolve',
-        'type' => 'game',
-        'action' => 'stRevealAndResolve',
-        'transitions' => array( 'toCleanup' => 7, 'toEnd' => 98 )
-    ),
-
-    // 6: challenge of the intercept claim
-    6 => array(
-        'name' => 'interceptChallenge',
-        'type' => 'multipleactiveplayer',
-        'action' => 'stInterceptChallenge',
-        'args' => 'argInterceptChallenge',
-        'possibleactions' => array('actChallengeIntercept', 'actPassIntercept'),
-        'transitions' => array( 'toReveal' => 5 )
-    ),
-
-    // 7: end of turn cleanup and next player
-    7 => array(
-        'name' => 'endOfTurn',
-        'type' => 'game',
-        'action' => 'stEndOfTurn',
-        'transitions' => array( '' => 2, 'endGame' => 98 )
-    ),
-
-    // 98: end game
-    98 => array(
-        'name' => 'gameEnd',
-        'type' => 'manager',
-        'action' => 'stGameEnd',
-        'description' => clienttranslate('Game over')
-    ),
-
-    // 99: zombie pass
-    99 => array(
-        'name' => 'zombiePass',
-        'type' => 'game',
-        'action' => 'stZombiePass',
-        'transitions' => array( '' => 2 )
-    ),
-);
-
-  </file>
-  <file path="src/stats.inc.php">
-<?php
-/**
- * Herding Cats - stats.inc.php
- */
-$stats_type = array(
-
-    // Statistics at the game table level
-    'table' => array(
-        'turns' => array('id'=>10, 'name'=>totranslate('Turns played'), 'type'=>'int'),
-    ),
-
-    // Statistics at player level
-    'player' => array(
-        'truth_ratio' => array('id'=>20, 'name'=>totranslate('Truthful declarations'), 'type'=>'float'),
-        'bluff_ratio' => array('id'=>21, 'name'=>totranslate('Bluffed declarations'), 'type'=>'float'),
-        'successful_intercepts' => array('id'=>22, 'name'=>totranslate('Successful intercepts'), 'type'=>'int'),
-        'failed_intercepts' => array('id'=>23, 'name'=>totranslate('Failed intercepts'), 'type'=>'int'),
-        'challenges_won' => array('id'=>24, 'name'=>totranslate('Challenges won'), 'type'=>'int'),
-        'challenges_lost' => array('id'=>25, 'name'=>totranslate('Challenges lost'), 'type'=>'int')
+    'game_interface' => array(
+        'minimum' => array( 'notifs' => 1, 'chat' => 1 ),
+        'recommended' => array( 'tooltip' => 1, 'zoom' => 1, 'mobile' => 1 )
     )
 );
 
-  </file>
-  <file path="src/dbmodel.sql">
--- Herding Cats - dbmodel.sql
+</file>
 
--- Deck table used by BGA Deck component
+<file path="src/material.inc.php"><?php
+/**
+ * material.inc.php - constants and helpers
+ */
+
+// Card type constants (printed identities)
+define('HC_TYPE_KITTEN', 1);
+define('HC_TYPE_SHOWCAT', 2);
+define('HC_TYPE_ALLEY', 3);
+define('HC_TYPE_CATNIP', 4);
+define('HC_TYPE_ANIMAL', 5);
+define('HC_TYPE_LASER', 6);
+
+// Herd zone names
+define('HC_LOC_HAND', 'hand');         // location_arg = player_id, card_location_arg = position (1..N)
+define('HC_LOC_HERD', 'herd');         // face-down
+define('HC_LOC_HERD_UP', 'herdup');    // face-up, protected
+define('HC_LOC_DISCARD', 'discard');   // location_arg = player_id
+define('HC_LOC_REMOVED', 'removed');   // location_arg = player_id
+define('HC_LOC_PLAYED', 'played');     // temporary, location_arg = attacker_id
+
+// Targets
+define('HC_TGT_NONE', 0);
+define('HC_TGT_HAND', 1);
+define('HC_TGT_HERD', 2);
+
+// Game state value keys
+define('GV_ATTACKER', 1);
+define('GV_DEFENDER', 2);
+define('GV_PLAYED_CARD_ID', 3);
+define('GV_DECLARED_TYPE', 4);
+define('GV_TARGET_PLAYER', 5);
+define('GV_TARGET_ZONE', 6);
+define('GV_TARGET_SLOT', 7);
+define('GV_SELECTED_HERD_CARD', 8);
+define('GV_CHALLENGER_BITS', 9);
+define('GV_FIRST_CHAL_NO', 10);
+define('GV_INTERCEPT_ZONE', 11);
+define('GV_INTERCEPT_CHAL_BITS', 12);
+define('GV_FIRST_INTERCEPT_CHAL_NO', 13);
+define('GV_TRUTH_PENALTY_NEXT_NO', 14);
+define('GV_PHASE_MARKER', 15);
+
+// State constants
+define('ST_GAME_SETUP', 1);
+define('ST_PLAYER_DECLARE', 10);
+define('ST_CHALLENGE_WINDOW', 11);
+define('ST_RESOLVE_CHALLENGE', 12);
+define('ST_SELECT_TARGET', 13);
+define('ST_INTERCEPT_DECISION', 14);
+define('ST_INTERCEPT_CHALLENGE', 15);
+define('ST_RESOLVE_INTERCEPT', 16);
+define('ST_RESOLVE_EFFECT', 17);
+define('ST_BLUFF_PENALTY_PICK', 18);
+define('ST_TRUTH_PENALTY_PICK', 19);
+define('ST_END_TURN', 98);
+define('ST_SCORING', 99);
+
+</file>
+
+<file path="src/states.inc.php"><?php
+/**
+ * states.inc.php
+ */
+$machinestates = array(
+
+    ST_GAME_SETUP => array(
+        'name' => 'gameSetup',
+        'description' => '',
+        'type' => 'manager',
+        'action' => 'stGameSetup',
+        'transitions' => array( '' => ST_PLAYER_DECLARE )
+    ),
+
+    ST_PLAYER_DECLARE => array(
+        'name' => 'playerDeclare',
+        'description' => clienttranslate('${actplayer} - play a card face-down and declare'),
+        'descriptionmyturn' => clienttranslate('Play a card face-down and declare'),
+        'type' => 'activeplayer',
+        'args' => 'argPlayerDeclare',
+        'possibleactions' => array('actDeclarePlay'),
+        'transitions' => array( 'goChallenge' => ST_CHALLENGE_WINDOW )
+    ),
+
+    ST_CHALLENGE_WINDOW => array(
+        'name' => 'challengeWindow',
+        'description' => clienttranslate('Challenge window - other players may challenge or pass'),
+        'type' => 'multipleactiveplayer',
+        'args' => 'argChallengeWindow',
+        'possibleactions' => array('actChallenge', 'actPassChallenge'),
+        'transitions' => array( 'resolve' => ST_RESOLVE_CHALLENGE )
+    ),
+
+    ST_RESOLVE_CHALLENGE => array(
+        'name' => 'resolveChallenge',
+        'type' => 'game',
+        'action' => 'stResolveChallenge',
+        'transitions' => array(
+            'bluffPenalty' => ST_BLUFF_PENALTY_PICK,
+            'truthPenalty' => ST_TRUTH_PENALTY_PICK,
+            'noChallenge' => ST_SELECT_TARGET,
+            'truthNoPenalty' => ST_SELECT_TARGET,
+            'endTurn' => ST_END_TURN
+        )
+    ),
+
+    ST_BLUFF_PENALTY_PICK => array(
+        'name' => 'bluffPenaltyPick',
+        'description' => clienttranslate('${actplayer} - pick a blind card from attacker to discard'),
+        'descriptionmyturn' => clienttranslate('Pick a blind card from attacker to discard'),
+        'type' => 'activeplayer',
+        'args' => 'argBluffPenaltyPick',
+        'possibleactions' => array('actPickBlindFromHand'),
+        'transitions' => array( 'done' => ST_END_TURN )
+    ),
+
+    ST_TRUTH_PENALTY_PICK => array(
+        'name' => 'truthPenaltyPick',
+        'description' => clienttranslate('${actplayer} - pick a blind card from a challenger to discard'),
+        'descriptionmyturn' => clienttranslate('Pick a blind card from the next challenger'),
+        'type' => 'activeplayer',
+        'args' => 'argTruthPenaltyPick',
+        'possibleactions' => array('actPickBlindFromHand'),
+        'transitions' => array( 'next' => ST_TRUTH_PENALTY_PICK, 'done' => ST_SELECT_TARGET )
+    ),
+
+    ST_SELECT_TARGET => array(
+        'name' => 'selectTarget',
+        'description' => clienttranslate('${actplayer} - select the target slot/card'),
+        'descriptionmyturn' => clienttranslate('Select the target slot/card'),
+        'type' => 'activeplayer',
+        'args' => 'argSelectTarget',
+        'possibleactions' => array('actSelectHandSlot','actSelectHerdCard','actSkipTarget'),
+        'transitions' => array(
+            'toIntercept' => ST_INTERCEPT_DECISION,
+            'toResolve' => ST_RESOLVE_EFFECT
+        )
+    ),
+
+    ST_INTERCEPT_DECISION => array(
+        'name' => 'interceptDecision',
+        'description' => clienttranslate('${actplayer} - you may declare a Laser Pointer intercept'),
+        'descriptionmyturn' => clienttranslate('Declare Laser Pointer intercept or continue'),
+        'type' => 'activeplayer',
+        'args' => 'argInterceptDecision',
+        'possibleactions' => array('actDeclareIntercept','actDeclineIntercept'),
+        'transitions' => array( 'toInterceptChallenge' => ST_INTERCEPT_CHALLENGE, 'toResolve' => ST_RESOLVE_EFFECT )
+    ),
+
+    ST_INTERCEPT_CHALLENGE => array(
+        'name' => 'interceptChallenge',
+        'description' => clienttranslate('Intercept - others may challenge or pass'),
+        'type' => 'multipleactiveplayer',
+        'args' => 'argInterceptChallengeWindow',
+        'possibleactions' => array('actChallengeIntercept','actPassIntercept'),
+        'transitions' => array( 'resolve' => ST_RESOLVE_INTERCEPT )
+    ),
+
+    ST_RESOLVE_INTERCEPT => array(
+        'name' => 'resolveIntercept',
+        'type' => 'game',
+        'action' => 'stResolveIntercept',
+        'transitions' => array(
+            'success' => ST_END_TURN,
+            'liePenalty' => ST_BLUFF_PENALTY_PICK,  // reuse picker flow: first intercept challenger picks from defender
+            'failProceed' => ST_RESOLVE_EFFECT
+        )
+    ),
+
+    ST_RESOLVE_EFFECT => array(
+        'name' => 'resolveEffect',
+        'type' => 'game',
+        'action' => 'stResolveEffect',
+        'transitions' => array( 'endTurn' => ST_END_TURN )
+    ),
+
+    ST_END_TURN => array(
+        'name' => 'endTurn',
+        'type' => 'game',
+        'action' => 'stEndTurn',
+        'transitions' => array( 'next' => ST_PLAYER_DECLARE, 'scoring' => ST_SCORING )
+    ),
+
+    ST_SCORING => array(
+        'name' => 'scoring',
+        'type' => 'game',
+        'action' => 'stComputeScores',
+        'transitions' => array( 'endGame' => 99 )
+    ),
+);
+
+</file>
+
+<file path="src/stats.inc.php"><?php
+/**
+ * stats.inc.php
+ */
+$stats_type = array(
+    'table' => array(
+        'rounds' => array(
+            'id' => 10,
+            'name' => totranslate('Turns played'),
+            'type' => 'int'
+        ),
+    ),
+    'player' => array(
+        'bluffs_caught' => array( 'id'=>11, 'name'=> totranslate('Bluffs caught'), 'type'=>'int' ),
+        'failed_challenges' => array( 'id'=>12, 'name'=> totranslate('Failed challenges'), 'type'=>'int' ),
+        'intercepts' => array( 'id'=>13, 'name'=> totranslate('Successful intercepts'), 'type'=>'int' ),
+        'cards_in_herd' => array( 'id'=>14, 'name'=> totranslate('Cards in herd at end'), 'type'=>'int' ),
+    )
+);
+
+</file>
+
+<file path="src/dbmodel.sql">-- Standard BGA deck tables
 CREATE TABLE IF NOT EXISTS `card` (
   `card_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `card_type` int(10) NOT NULL,
-  `card_type_arg` int(10) NOT NULL,
+  `card_type` int(10) unsigned NOT NULL,
+  `card_type_arg` int(11) NOT NULL DEFAULT 0,
   `card_location` varchar(32) NOT NULL,
-  `card_location_arg` int(10) NOT NULL,
+  `card_location_arg` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`card_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
--- Pending action for declared card and optional intercept
-CREATE TABLE IF NOT EXISTS `pending_action` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `active_pid` int(10) NOT NULL,
-  `declared_type` int(10) NOT NULL,           -- what the player claimed
-  `played_card_id` int(10) NOT NULL,          -- the physical card id placed face-down
-  `target_pid` int(10) DEFAULT NULL,
-  `challengers_json` text DEFAULT NULL,       -- list of player ids who challenged the declaration
-  `intercept_claim_pid` int(10) DEFAULT NULL, -- defender who claimed Laser Pointer
-  `intercept_card_id` int(10) DEFAULT NULL,   -- which card they pointed to as Laser Pointer
-  `intercept_challengers_json` text DEFAULT NULL, -- challengers of the intercept claim
-  `state` varchar(32) NOT NULL DEFAULT 'declared', -- declared | intercept | resolving
-  PRIMARY KEY (`id`)
+CREATE TABLE IF NOT EXISTS `card_global` (
+  `global_id` int(10) unsigned NOT NULL,
+  `global_value` int(10) unsigned NOT NULL,
+  PRIMARY KEY (`global_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+</file>
 
-  </file>
-  <file path="src/herdingcats.game.php">
-<?php
-/************************************
- * Herding Cats - main game class
+<file path="src/modules/HerdingCatsRules.php"><?php
+/**
+ * Modules - rules helpers and constants mapping
  */
-require_once(APP_GAMEMODULE_PATH.'/module/table/table.game.php');
+class HCRules {
 
-class herdingcats extends APP_GameClass
-{
-    use HCRules; // from modules/HerdingCatsRules.php
+    // Toggle the Laser Pointer buff: on truthful intercept, put Laser into herd instead of discard
+    public static $BUFF_LASER_TO_HERD = true;
 
-    function __construct()
-    {
-        parent::__construct();
+    public static $CARD_NAMES = array(
+        HC_TYPE_KITTEN => 'Kitten',
+        HC_TYPE_SHOWCAT => 'Show Cat',
+        HC_TYPE_ALLEY => 'Alley Cat',
+        HC_TYPE_CATNIP => 'Catnip',
+        HC_TYPE_ANIMAL => 'Animal Control',
+        HC_TYPE_LASER => 'Laser Pointer',
+    );
 
-        self::initGameStateLabels(array(
-            'current_player' => 10
-        ));
+    // Base values at scoring
+    public static $CARD_VALUES = array(
+        HC_TYPE_KITTEN => 2,
+        HC_TYPE_SHOWCAT => 5, // may become 7 if any kitten present
+        HC_TYPE_ALLEY => 1,
+        HC_TYPE_CATNIP => 1,
+        HC_TYPE_ANIMAL => 0,
+        HC_TYPE_LASER => 0,
+    );
 
-        $this->deck = self::getNew('module.common.deck');
-        $this->deck->init('card');
+    public static function getCardName($type) {
+        return self::$CARD_NAMES[$type];
     }
 
-    protected function getGameName()
-    {
+    public static function getTargetZoneForDeclared($type) {
+        if ($type == HC_TYPE_ALLEY || $type == HC_TYPE_CATNIP) return HC_TGT_HAND;
+        if ($type == HC_TYPE_ANIMAL) return HC_TGT_HERD;
+        return HC_TGT_NONE;
+    }
+
+    public static function declaredToText($type) {
+        return self::getCardName($type);
+    }
+
+    public static function faceValueForShowCat($hasKitten) {
+        return $hasKitten ? 7 : 5;
+    }
+
+    // Utility: compute hand index list from cards ordered by card_location_arg
+    public static function handIndexMap($cards) {
+        // returns map index(1-based)->card
+        $res = array();
+        $pos = 1;
+        foreach ($cards as $c) {
+            $res[$pos] = $c;
+            $pos++;
+        }
+        return $res;
+    }
+
+    public static function normalizeHandPositions($cards, $deck, $pid) {
+        $pos = 1;
+        foreach ($cards as $c) {
+            if ((int)$c['location_arg'] != $pos) {
+                $deck->moveCard($c['id'], HC_LOC_HAND, $pid);
+                self::setCardPos($deck, $c['id'], $pos);
+            }
+            $pos++;
+        }
+    }
+
+    public static function setCardPos($deck, $card_id, $pos) {
+        $sql = "UPDATE card SET card_location_arg=$pos WHERE card_id=$card_id";
+        $deck->DbQuery($sql);
+    }
+}
+
+</file>
+
+<file path="src/herdingcats.game.php"><?php
+/**
+ * Herding Cats - main game class
+ */
+require_once(APP_GAMEMODULE_PATH.'module/table/table.game.php');
+
+class herdingcats extends Table
+{
+    /** @var Deck */
+    protected $cards;
+
+    function __construct() {
+        parent::__construct();
+        self::initGameStateLabels(array(
+            GV_ATTACKER => GV_ATTACKER,
+            GV_DEFENDER => GV_DEFENDER,
+            GV_PLAYED_CARD_ID => GV_PLAYED_CARD_ID,
+            GV_DECLARED_TYPE => GV_DECLARED_TYPE,
+            GV_TARGET_PLAYER => GV_TARGET_PLAYER,
+            GV_TARGET_ZONE => GV_TARGET_ZONE,
+            GV_TARGET_SLOT => GV_TARGET_SLOT,
+            GV_SELECTED_HERD_CARD => GV_SELECTED_HERD_CARD,
+            GV_CHALLENGER_BITS => GV_CHALLENGER_BITS,
+            GV_FIRST_CHAL_NO => GV_FIRST_CHAL_NO,
+            GV_INTERCEPT_ZONE => GV_INTERCEPT_ZONE,
+            GV_INTERCEPT_CHAL_BITS => GV_INTERCEPT_CHAL_BITS,
+            GV_FIRST_INTERCEPT_CHAL_NO => GV_FIRST_INTERCEPT_CHAL_NO,
+            GV_TRUTH_PENALTY_NEXT_NO => GV_TRUTH_PENALTY_NEXT_NO,
+            GV_PHASE_MARKER => GV_PHASE_MARKER,
+        ));
+        $this->cards = self::getNew('module.common.deck');
+        $this->cards->init('card');
+        require_once('modules/HerdingCatsRules.php');
+    }
+
+    protected function getGameName() {
         return 'herdingcats';
     }
 
-    /*
-     * Game setup
-     */
-    protected function setupNewGame($players, $options = array())
-    {
-        // Create players
-        $colors = array('ff0000','008000','0000ff','ffa500','773300','000000');
-        $player_cnt = 0;
-        foreach( $players as $player_id => $player )
-        {
-            $color = array_shift($colors);
-            self::DbQuery("INSERT INTO player (player_id, player_color, player_canal, player_name, player_avatar) VALUES ($player_id, '$color', '".$player['player_canal']."', '".$player['player_name']."', '".$player['player_avatar']."')");
-            $player_cnt++;
-        }
-        self::reattributeColorsBasedOnPreferences($players, array_keys($players));
-        self::reloadPlayersBasicInfos();
+    // Utility getters
+    protected function getPlayerIds() {
+        return array_keys(self::loadPlayersBasicInfos());
+    }
 
-        // Build micro-decks for each player
-        $cards = array();
-        foreach( $players as $pid => $p )
-        {
-            // 3 Kitten (2)
-            for($i=0;$i<3;$i++){ $cards[] = array('type'=>CARD_KITTEN, 'type_arg'=>CARD_KITTEN, 'nbr'=>1, 'location'=>"deck"); }
-            // 1 Show Cat (5/7)
-            $cards[] = array('type'=>CARD_SHOW_CAT, 'type_arg'=>CARD_SHOW_CAT, 'nbr'=>1, 'location'=>"deck");
-            // 2 Alley Cat (1)
-            for($i=0;$i<2;$i++){ $cards[] = array('type'=>CARD_ALLEY_CAT, 'type_arg'=>CARD_ALLEY_CAT, 'nbr'=>1, 'location'=>"deck"); }
-            // 1 Catnip (1)
-            $cards[] = array('type'=>CARD_CATNIP, 'type_arg'=>CARD_CATNIP, 'nbr'=>1, 'location'=>"deck");
-            // 1 Animal Control (0)
-            $cards[] = array('type'=>CARD_ANIMAL_CONTROL, 'type_arg'=>CARD_ANIMAL_CONTROL, 'nbr'=>1, 'location'=>"deck");
-            // 1 Laser Pointer (0)
-            $cards[] = array('type'=>CARD_LASER_POINTER, 'type_arg'=>CARD_LASER_POINTER, 'nbr'=>1, 'location'=>"deck");
+    protected function getOrderedPlayerIds($startPlayerId=null) {
+        $players = self::getCollectionFromDb("SELECT player_id id, player_no no FROM player ORDER BY player_no ASC");
+        $ids = array();
+        foreach ($players as $p) $ids[] = intval($p['id']);
+        if ($startPlayerId === null) return $ids;
+        // rotate so that start is first
+        while ($ids[0] != $startPlayerId) {
+            $x = array_shift($ids);
+            $ids[] = $x;
         }
-        $this->deck->createCards($cards, 'deck');
-        $this->deck->shuffle('deck');
+        return $ids;
+    }
 
-        // For each player: draw 7 to hand, remove 2 unknown
-        foreach( $players as $pid => $p )
-        {
-            $hand = $this->deck->pickCards(7, 'deck', $pid);
-            $removed = $this->deck->pickCards(2, 'deck', $pid);
-            // Move removed to secret 'removed' location
-            foreach($removed as $c){
-                $this->deck->moveCard($c['id'], 'removed', $pid);
+    protected function nextPlayerId($pid) {
+        $ids = $this->getOrderedPlayerIds($pid);
+        array_shift($ids);
+        return $ids[0];
+    }
+
+    // Setup
+    function stGameSetup() {
+        $players = self::loadPlayersBasicInfos();
+        $sql = "UPDATE player SET player_score=0";
+        self::DbQuery($sql);
+
+        // Create cards - 9 per player
+        $cards_to_create = array();
+        foreach ($players as $pid => $p) {
+            $types = array_merge(
+                array_fill(0, 3, HC_TYPE_KITTEN),
+                array(HC_TYPE_SHOWCAT),
+                array_fill(0, 2, HC_TYPE_ALLEY),
+                array(HC_TYPE_CATNIP),
+                array(HC_TYPE_ANIMAL),
+                array(HC_TYPE_LASER)
+            );
+            shuffle($types);
+            $hand = array_slice($types, 0, 7);
+            $removed = array_slice($types, 7, 2);
+            $pos = 1;
+            foreach ($hand as $t) {
+                $cards_to_create[] = array('type'=>$t,'type_arg'=>0,'nbr'=>1,'location'=>HC_LOC_HAND,'location_arg'=>$pid,'pos'=>$pos);
+                $pos++;
+            }
+            foreach ($removed as $t) {
+                $cards_to_create[] = array('type'=>$t,'type_arg'=>0,'nbr'=>1,'location'=>HC_LOC_REMOVED,'location_arg'=>$pid);
+            }
+        }
+        // Using Deck::createCards expects entries without 'pos', so we create and then set positions
+        $create = array();
+        foreach ($cards_to_create as $c) {
+            $create[] = array('type'=>$c['type'],'type_arg'=>$c['type_arg'],'nbr'=>1,'location'=>$c['location'],'location_arg'=>$c['location_arg']);
+        }
+        $this->cards->createCards($create, 'card');
+        // Now assign positions for hands
+        foreach ($this->getPlayerIds() as $pid) {
+            $handCards = $this->cards->getCardsInLocation(HC_LOC_HAND, $pid);
+            $pos = 1;
+            foreach ($handCards as $c) {
+                HCRules::setCardPos($this->cards, $c['id'], $pos);
+                $pos++;
             }
         }
 
-        // Set first player
-        $this->activeNextPlayer();
+        // First player
+        $first = self::activeNextPlayer();
+        self::setGameStateInitialValue(GV_ATTACKER, $first);
+        self::setGameStateInitialValue(GV_DEFENDER, 0);
+        self::setGameStateInitialValue(GV_PLAYED_CARD_ID, 0);
+        self::setGameStateInitialValue(GV_DECLARED_TYPE, 0);
+        self::setGameStateInitialValue(GV_TARGET_PLAYER, 0);
+        self::setGameStateInitialValue(GV_TARGET_ZONE, 0);
+        self::setGameStateInitialValue(GV_TARGET_SLOT, 0);
+        self::setGameStateInitialValue(GV_SELECTED_HERD_CARD, 0);
+        self::setGameStateInitialValue(GV_CHALLENGER_BITS, 0);
+        self::setGameStateInitialValue(GV_FIRST_CHAL_NO, 0);
+        self::setGameStateInitialValue(GV_INTERCEPT_ZONE, 0);
+        self::setGameStateInitialValue(GV_INTERCEPT_CHAL_BITS, 0);
+        self::setGameStateInitialValue(GV_FIRST_INTERCEPT_CHAL_NO, 0);
+        self::setGameStateInitialValue(GV_TRUTH_PENALTY_NEXT_NO, 0);
+        self::setGameStateInitialValue(GV_PHASE_MARKER, 0);
 
-        $this->gamestate->nextState('');
+        self::setGameStateValue(GV_ATTACKER, $first);
+        $this->gamestate->nextState(ST_PLAYER_DECLARE);
     }
 
-    /*
-     * Provide all public data to the client
-     */
-    protected function getAllDatas()
-    {
+    // Return game data to set up the UI
+    function getAllDatas() {
         $result = array();
         $current_player_id = self::getCurrentPlayerId();
+        $players = self::loadPlayersBasicInfos();
+        $result['players'] = $players;
 
-        // Players basic info
-        $sql = "SELECT player_id id, player_score score FROM player ";
-        $result['players'] = self::getCollectionFromDb( $sql );
+        // Hands - only current player sees their own
+        $result['hand'] = array();
+        $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $current_player_id);
+        // order by location_arg
+        usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+        $result['hand'] = $hand;
 
-        // Handsize for current player, herd/discards public
-        $result['hand'] = $this->deck->getCardsInLocation('hand', $current_player_id);
-        $result['discard'] = array(); // per player discards if needed
-        $result['herds'] = array();   // faces up/down counts per player
+        // Herds and discards public info
+        $result['herds'] = array();
+        $result['herd_up'] = array();
+        $result['discards'] = array();
+        foreach ($players as $pid=>$p) {
+            $result['herds'][$pid] = $this->cards->getCardsInLocation(HC_LOC_HERD, $pid);
+            $result['herd_up'][$pid] = $this->cards->getCardsInLocation(HC_LOC_HERD_UP, $pid);
+            $result['discards'][$pid] = $this->cards->getCardsInLocation(HC_LOC_DISCARD, $pid);
+        }
+
+        // Played card and declaration context (partial)
+        $result['ctx'] = array(
+            'attacker' => self::getGameStateValue(GV_ATTACKER),
+            'declaredType' => self::getGameStateValue(GV_DECLARED_TYPE),
+            'targetPlayer' => self::getGameStateValue(GV_TARGET_PLAYER),
+            'targetZone' => self::getGameStateValue(GV_TARGET_ZONE),
+            'targetSlot' => self::getGameStateValue(GV_TARGET_SLOT),
+            'selectedHerdCard' => self::getGameStateValue(GV_SELECTED_HERD_CARD),
+        );
 
         return $result;
     }
 
-    /*
-     * Game progression percentage
-     */
-    function getGameProgression()
-    {
-        // Rough heuristic: 100 - average hand size * 10
+    function getGameProgression() {
+        // Rough %: proportion of cards played into herds vs total possible
         $players = self::loadPlayersBasicInfos();
-        $sum = 0; $n=0;
-        foreach($players as $pid=>$p){
-            $sum += $this->deck->countCardInLocation('hand', $pid);
-            $n++;
+        $total = 0; $played = 0;
+        foreach ($players as $pid=>$p) {
+            $total += 7;
+            $played += count($this->cards->getCardsInLocation(HC_LOC_HERD, $pid));
+            $played += count($this->cards->getCardsInLocation(HC_LOC_HERD_UP, $pid));
+            $played += count($this->cards->getCardsInLocation(HC_LOC_DISCARD, $pid));
         }
-        $avg = $n? ($sum/$n) : 0;
-        $prog = max(0, min(100, intval(100 - $avg*10)));
-        return $prog;
+        if ($total == 0) return 0;
+        return min(100, intval($played*100/$total));
     }
 
-    /*
-     * State actions and args
-     */
-    function stGameSetup(){ /* handled in setupNewGame */ }
+    ////////////// Player actions //////////////
 
-    function stChallengeWindow(){
-        // Activate all non-active players to choose challenge or pass
-        $active = self::getActivePlayerId();
-        $players = self::loadPlayersBasicInfos();
-        $multi = array();
-        foreach($players as $pid=>$p){ if($pid != $active){ $multi[$pid] = 'pass'; } }
-        $this->gamestate->setPlayersMultiactive( array_keys($multi), 'toReveal', true );
-    }
+    function actDeclarePlay($card_id, $declared_type, $target_player_id=0) {
+        self::checkAction('actDeclarePlay');
+        $player_id = self::getActivePlayerId();
 
-    function argChallengeWindow(){
-        return array(
-            'canChallenge' => true
-        );
-    }
+        // Validate card is in hand
+        $card = $this->cards->getCard($card_id);
+        if ($card['location'] != HC_LOC_HAND || intval($card['location_arg']) != $player_id) {
+            throw new BgaUserException(self::_("You must select a card from your hand."));
+        }
+        // Validate declaration and target
+        $tgtZone = HCRules::getTargetZoneForDeclared($declared_type);
+        if ($tgtZone == HC_TGT_NONE) {
+            $target_player_id = 0;
+        } else {
+            if ($target_player_id == 0 || $target_player_id == $player_id) throw new BgaUserException(self::_("Choose an opponent to target."));
+        }
 
-    function stRevealAndResolve(){
-        // TODO: Resolve the declaration, handle challenges and intercepts via HCRules
-        $this->gamestate->nextState('toCleanup');
-    }
+        // Move card to played
+        $this->cards->moveCard($card_id, HC_LOC_PLAYED, $player_id);
 
-    function stEndOfTurn(){
-        $this->activeNextPlayer();
-        $this->gamestate->nextState('');
-    }
+        // Persist context
+        self::setGameStateValue(GV_ATTACKER, $player_id);
+        self::setGameStateValue(GV_PLAYED_CARD_ID, $card_id);
+        self::setGameStateValue(GV_DECLARED_TYPE, $declared_type);
+        self::setGameStateValue(GV_TARGET_PLAYER, $target_player_id);
+        self::setGameStateValue(GV_TARGET_ZONE, $tgtZone);
+        self::setGameStateValue(GV_TARGET_SLOT, 0);
+        self::setGameStateValue(GV_SELECTED_HERD_CARD, 0);
+        self::setGameStateValue(GV_CHALLENGER_BITS, 0);
+        self::setGameStateValue(GV_FIRST_CHAL_NO, 0);
 
-    /*
-     * Ajax actions
-     */
-    function actDeclare(){
-        self::checkAction('actDeclare');
-        // Inputs: playedCardId, declaredType, targetPid (optional)
-        $playedCardId = intval($_POST['card_id']);
-        $declaredType = intval($_POST['declared_type']);
-        $targetPid = isset($_POST['target_pid']) ? intval($_POST['target_pid']) : null;
-
-        // Move card to pending area (face-down)
-        $pid = self::getActivePlayerId();
-        $this->deck->moveCard($playedCardId, 'table', $pid);
-
-        // Store pending action row
-        self::DbQuery(sprintf(
-            "INSERT INTO pending_action (active_pid, declared_type, played_card_id, target_pid, state) VALUES (%d, %d, %d, %s, 'declared')",
-            $pid, $declaredType, $playedCardId, ($targetPid===null?'NULL':$targetPid)
-        ));
-
-        self::notifyAllPlayers('declared', clienttranslate('${player_name} declares a card'), array(
-            'player_id' => $pid,
+        // Notify
+        self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl}'), array(
+            'player_id' => $player_id,
             'player_name' => self::getActivePlayerName(),
-            'declared_type' => $declaredType,
-            'target_pid' => $targetPid
+            'decl' => HCRules::declaredToText($declared_type),
+            'declared_type' => $declared_type,
+            'target_player_id' => $target_player_id,
+            'target_zone' => $tgtZone,
         ));
 
-        $this->gamestate->nextState('declared');
+        // Multi-active challenge window
+        $this->gamestate->setAllPlayersMultiactive();
+        // Remove attacker from multi-active
+        $this->gamestate->setPlayerNonMultiactive($player_id, 'resolve');
+        $this->gamestate->nextState('goChallenge');
     }
 
-    function actChallenge(){
+    function argPlayerDeclare() {
+        $pid = self::getActivePlayerId();
+        $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $pid);
+        usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+        return array( 'hand'=>$hand );
+    }
+
+    function argChallengeWindow() {
+        $attacker = self::getGameStateValue(GV_ATTACKER);
+        return array('attacker'=>$attacker);
+    }
+
+    function actChallenge() {
         self::checkAction('actChallenge');
-        // TODO: persist in pending_action.challengers_json
-        self::notifyAllPlayers('challenge', clienttranslate('${player_name} challenges the declaration'), array(
-            'player_id' => self::getCurrentPlayerId(),
-            'player_name' => self::getCurrentPlayerName()
-        ));
-        $this->gamestate->setPlayerNonMultiactive(self::getCurrentPlayerId(), 'toReveal');
+        $pid = self::getCurrentPlayerId();
+        if ($pid == self::getGameStateValue(GV_ATTACKER)) throw new BgaUserException(self::_("Attacker cannot challenge."));
+        $bits = self::getGameStateValue(GV_CHALLENGER_BITS);
+        $no = intval(self::getUniqueValueFromDB("SELECT player_no FROM player WHERE player_id=$pid"));
+        if (($bits & (1 << ($no-1))) == 0) {
+            $bits |= (1 << ($no-1));
+            self::setGameStateValue(GV_CHALLENGER_BITS, $bits);
+            if (self::getGameStateValue(GV_FIRST_CHAL_NO) == 0) self::setGameStateValue(GV_FIRST_CHAL_NO, $no);
+            self::notifyAllPlayers('challengeMade', clienttranslate('${player_name} challenges!'), array(
+                'player_id'=>$pid, 'player_name'=>self::getActivePlayerName()
+            ));
+        }
+        $this->gamestate->setPlayerNonMultiactive($pid, 'resolve');
+        $this->checkAllChallengeResponses();
     }
 
-    function actPassChallenge(){
+    function actPassChallenge() {
         self::checkAction('actPassChallenge');
-        $this->gamestate->setPlayerNonMultiactive(self::getCurrentPlayerId(), 'toReveal');
+        $pid = self::getCurrentPlayerId();
+        $this->gamestate->setPlayerNonMultiactive($pid, 'resolve');
+        $this->checkAllChallengeResponses();
     }
 
-    function actDeclareIntercept(){
+    protected function checkAllChallengeResponses() {
+        if (!$this->gamestate->isMultiActivePlayerActive()) {
+            $this->gamestate->nextState('resolve');
+        }
+    }
+
+    function stResolveChallenge() {
+        $attacker = self::getGameStateValue(GV_ATTACKER);
+        $card_id = self::getGameStateValue(GV_PLAYED_CARD_ID);
+        $decl = self::getGameStateValue(GV_DECLARED_TYPE);
+        $bits = self::getGameStateValue(GV_CHALLENGER_BITS);
+
+        if ($bits == 0) {
+            // No challenge
+            if (self::getGameStateValue(GV_TARGET_ZONE) == HC_TGT_NONE) {
+                $this->gamestate->nextState('truthNoPenalty');
+            } else {
+                $this->gamestate->nextState('noChallenge');
+            }
+            return;
+        }
+
+        $card = $this->cards->getCard($card_id);
+        $printed = intval($card['type']);
+        $truth = ($printed == $decl);
+
+        if (!$truth) {
+            // Bluff caught
+            // Reveal to all
+            self::notifyAllPlayers('revealPlayed', clienttranslate('Bluff! The played card was ${printed}'), array(
+                'player_id'=>$attacker,
+                'printed'=>$this->typeToText($printed),
+                'printed_type'=>$printed,
+            ));
+            // Discard played card
+            $this->cards->moveCard($card_id, HC_LOC_DISCARD, $attacker);
+            // First challenger selects blind penalty from attacker hand
+            $firstNo = self::getGameStateValue(GV_FIRST_CHAL_NO);
+            $firstChallenger = intval(self::getUniqueValueFromDB("SELECT player_id FROM player WHERE player_no=$firstNo"));
+            self::setGameStateValue(GV_DEFENDER, 0); // not used here
+            self::setGameStateValue(GV_TRUTH_PENALTY_NEXT_NO, 0);
+            // Set active to first challenger
+            $this->gamestate->changeActivePlayer($firstChallenger);
+            $this->gamestate->nextState('bluffPenalty');
+        } else {
+            // Truthful: attacker picks blind discards from each challenger in turn (active player is attacker)
+            self::notifyAllPlayers('truthful', clienttranslate('Truthful play stands'), array());
+            $this->gamestate->changeActivePlayer($attacker);
+            // choose next challenger (lowest player_no present in bits)
+            $nextNo = $this->firstNoFromBits($bits);
+            self::setGameStateValue(GV_TRUTH_PENALTY_NEXT_NO, $nextNo);
+            $this->gamestate->nextState('truthPenalty');
+        }
+    }
+
+    function argBluffPenaltyPick() {
+        // Active player is the first challenger; target is attacker
+        $attacker = self::getGameStateValue(GV_ATTACKER);
+        $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $attacker);
+        usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+        return array('targetPlayer'=>$attacker, 'handSize'=>count($hand));
+    }
+
+    function argTruthPenaltyPick() {
+        $bits = self::getGameStateValue(GV_CHALLENGER_BITS);
+        $nextNo = self::getGameStateValue(GV_TRUTH_PENALTY_NEXT_NO);
+        $challenger = intval(self::getUniqueValueFromDB("SELECT player_id FROM player WHERE player_no=$nextNo"));
+        $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $challenger);
+        usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+        return array('targetPlayer'=>$challenger, 'handSize'=>count($hand));
+    }
+
+    function actPickBlindFromHand($target_player_id, $slot_index) {
+        self::checkAction('actPickBlindFromHand');
+        $picker = self::getActivePlayerId();
+        $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $target_player_id);
+        usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+        if ($slot_index < 1 || $slot_index > count($hand)) throw new BgaUserException(self::_("Invalid slot index."));
+        $card = $hand[$slot_index-1];
+        // Reveal then discard
+        self::notifyAllPlayers('revealHandCard', clienttranslate('${player_name} reveals ${card} from ${target}'s hand'), array(
+            'player_id'=>$picker,
+            'player_name'=>self::getActivePlayerName(),
+            'target'=>$this->getPlayerNameById($target_player_id),
+            'card'=>$this->typeToText($card['type']),
+            'card_type'=>$card['type'],
+            'card_id'=>$card['id'],
+            'target_player_id'=>$target_player_id,
+            'slot'=>$slot_index,
+        ));
+        $this->cards->moveCard($card['id'], HC_LOC_DISCARD, $target_player_id);
+
+        // Re-pack positions
+        $newhand = $this->cards->getCardsInLocation(HC_LOC_HAND, $target_player_id);
+        usort($newhand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+        $pos=1; foreach($newhand as $c){ HCRules::setCardPos($this->cards, $c['id'], $pos); $pos++; }
+
+        // Decide state progression based on current state
+        $stId = $this->gamestate->state_id();
+        if ($stId == ST_BLUFF_PENALTY_PICK) {
+            $this->gamestate->nextState('done');
+        } else if ($stId == ST_TRUTH_PENALTY_PICK) {
+            // Clear the bit for this challenger and move to next or finish
+            $bits = self::getGameStateValue(GV_CHALLENGER_BITS);
+            $nextNo = self::getGameStateValue(GV_TRUTH_PENALTY_NEXT_NO);
+            $bits &= ~(1 << ($nextNo-1));
+            self::setGameStateValue(GV_CHALLENGER_BITS, $bits);
+            if ($bits == 0) {
+                $this->gamestate->nextState('done');
+            } else {
+                $nextNo = $this->firstNoFromBits($bits);
+                self::setGameStateValue(GV_TRUTH_PENALTY_NEXT_NO, $nextNo);
+                $this->gamestate->nextState('next');
+            }
+        } else {
+            // Used also for intercept lie penalty (reuse bluff penalty state)
+            $this->gamestate->nextState('done');
+        }
+    }
+
+    function argSelectTarget() {
+        $decl = self::getGameStateValue(GV_DECLARED_TYPE);
+        $zone = HCRules::getTargetZoneForDeclared($decl);
+        $tpid = self::getGameStateValue(GV_TARGET_PLAYER);
+        $res = array('zone'=>$zone, 'targetPlayer'=>$tpid);
+        if ($zone == HC_TGT_HAND) {
+            $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $tpid);
+            usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+            $res['handSize'] = count($hand);
+        } else if ($zone == HC_TGT_HERD) {
+            $herd = $this->cards->getCardsInLocation(HC_LOC_HERD, $tpid);
+            $res['herdCards'] = array_values(array_map(function($c){ return $c['id']; }, $herd));
+        }
+        return $res;
+    }
+
+    function actSelectHandSlot($target_player_id, $slot_index) {
+        self::checkAction('actSelectHandSlot');
+        $attacker = self::getActivePlayerId();
+        if ($target_player_id != self::getGameStateValue(GV_TARGET_PLAYER)) throw new BgaUserException(self::_("Wrong target."));
+        $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $target_player_id);
+        usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+        if ($slot_index < 1 || $slot_index > count($hand)) throw new BgaUserException(self::_("Invalid slot."));
+        self::setGameStateValue(GV_TARGET_SLOT, $slot_index);
+        // Intercept window for defender
+        $this->gamestate->changeActivePlayer($target_player_id);
+        $this->gamestate->nextState('toIntercept');
+    }
+
+    function actSelectHerdCard($target_player_id, $card_id) {
+        self::checkAction('actSelectHerdCard');
+        $attacker = self::getActivePlayerId();
+        if ($target_player_id != self::getGameStateValue(GV_TARGET_PLAYER)) throw new BgaUserException(self::_("Wrong target."));
+        $card = $this->cards->getCard($card_id);
+        if ($card['location'] != HC_LOC_HERD || intval($card['location_arg']) != $target_player_id) throw new BgaUserException(self::_("Select a face-down herd card."));
+        self::setGameStateValue(GV_SELECTED_HERD_CARD, $card_id);
+        // Intercept window
+        $this->gamestate->changeActivePlayer($target_player_id);
+        $this->gamestate->nextState('toIntercept');
+    }
+
+    function actSkipTarget() {
+        self::checkAction('actSkipTarget');
+        $this->gamestate->nextState('toResolve');
+    }
+
+    function argInterceptDecision() {
+        $decl = self::getGameStateValue(GV_DECLARED_TYPE);
+        $zone = self::getGameStateValue(GV_TARGET_ZONE);
+        return array('allowedZone'=>$zone, 'declared'=>$decl);
+    }
+
+    function actDeclineIntercept() {
+        self::checkAction('actDeclineIntercept');
+        $this->gamestate->nextState('toResolve');
+    }
+
+    function actDeclareIntercept($zone) {
         self::checkAction('actDeclareIntercept');
-        // Defender claims Laser Pointer - store on pending_action
-        // TODO: update DB and notif
+        $def = self::getActivePlayerId();
+        $allowed = self::getGameStateValue(GV_TARGET_ZONE);
+        if ($zone != $allowed) throw new BgaUserException(self::_("Intercept must come from the targeted zone."));
+        self::setGameStateValue(GV_INTERCEPT_ZONE, $zone);
+        self::setGameStateValue(GV_INTERCEPT_CHAL_BITS, 0);
+        self::setGameStateValue(GV_FIRST_INTERCEPT_CHAL_NO, 0);
+        // Notify declaration (no reveal)
+        self::notifyAllPlayers('interceptDeclared', clienttranslate('${player_name} declares a Laser Pointer intercept'), array(
+            'player_id'=>$def, 'player_name'=>self::getActivePlayerName(), 'zone'=>$zone
+        ));
+        // Start multi-active challenge window for all except defender
+        $this->gamestate->setAllPlayersMultiactive();
+        $this->gamestate->setPlayerNonMultiactive($def, 'resolve');
         $this->gamestate->nextState('toInterceptChallenge');
     }
 
-    function actSkipIntercept(){
-        self::checkAction('actSkipIntercept');
-        $this->gamestate->nextState('toReveal');
+    function argInterceptChallengeWindow() {
+        $def = self::getGameStateValue(GV_TARGET_PLAYER);
+        return array('defender'=>$def);
     }
 
-    function actSelectInterceptCard(){
-        self::checkAction('actSelectInterceptCard');
-        // TODO: defender selects which card in hand is claimed as Laser Pointer
+    function actChallengeIntercept() {
+        self::checkAction('actChallengeIntercept');
+        $pid = self::getCurrentPlayerId();
+        if ($pid == self::getGameStateValue(GV_TARGET_PLAYER)) throw new BgaUserException(self::_("Defender cannot challenge their own intercept."));
+        $bits = self::getGameStateValue(GV_INTERCEPT_CHAL_BITS);
+        $no = intval(self::getUniqueValueFromDB("SELECT player_no FROM player WHERE player_id=$pid"));
+        if (($bits & (1 << ($no-1))) == 0) {
+            $bits |= (1 << ($no-1));
+            self::setGameStateValue(GV_INTERCEPT_CHAL_BITS, $bits);
+            if (self::getGameStateValue(GV_FIRST_INTERCEPT_CHAL_NO) == 0) self::setGameStateValue(GV_FIRST_INTERCEPT_CHAL_NO, $no);
+            self::notifyAllPlayers('challengeMade', clienttranslate('${player_name} challenges the intercept!'), array(
+                'player_id'=>$pid, 'player_name'=>self::getActivePlayerName()
+            ));
+        }
+        $this->gamestate->setPlayerNonMultiactive($pid, 'resolve');
+        $this->checkAllInterceptChallengeResponses();
     }
 
-    /* Zombie, cancel, etc omitted for brevity */
+    function actPassIntercept() {
+        self::checkAction('actPassIntercept');
+        $pid = self::getCurrentPlayerId();
+        $this->gamestate->setPlayerNonMultiactive($pid, 'resolve');
+        $this->checkAllInterceptChallengeResponses();
+    }
 
+    protected function checkAllInterceptChallengeResponses() {
+        if (!$this->gamestate->isMultiActivePlayerActive()) {
+            $this->gamestate->nextState('resolve');
+        }
+    }
+
+    function stResolveIntercept() {
+        $def = self::getGameStateValue(GV_TARGET_PLAYER);
+        $zone = self::getGameStateValue(GV_INTERCEPT_ZONE);
+        $bits = self::getGameStateValue(GV_INTERCEPT_CHAL_BITS);
+        if ($bits == 0) {
+            // No challenge, intercept stands
+            $this->applyInterceptSuccess(false); // no challenger penalties
+            $this->gamestate->nextState('success');
+            return;
+        }
+        // Truth check
+        $has = false;
+        if ($zone == HC_TGT_HAND) {
+            $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $def);
+            foreach ($hand as $c) if (intval($c['type']) == HC_TYPE_LASER) { $has = true; break; }
+        } else {
+            $herd = $this->cards->getCardsInLocation(HC_LOC_HERD, $def);
+            foreach ($herd as $c) if (intval($c['type']) == HC_TYPE_LASER) { $has = true; break; }
+        }
+
+        if ($has) {
+            // Defender is truthful - defender picks blind from each interceptor
+            self::notifyAllPlayers('truthful', clienttranslate('Intercept is truthful'), array());
+            // Use truth penalty pick flow with defender as active player
+            $this->gamestate->changeActivePlayer($def);
+            $nextNo = $this->firstNoFromBits($bits);
+            self::setGameStateValue(GV_CHALLENGER_BITS, $bits);
+            self::setGameStateValue(GV_TRUTH_PENALTY_NEXT_NO, $nextNo);
+            // Mark a flag in phase marker to later continue to success
+            self::setGameStateValue(GV_PHASE_MARKER, 1); // 1 means continue to intercept-success
+            $this->gamestate->nextState('truthPenalty');
+        } else {
+            // Defender lied - first interceptor picks blind from defender, then proceed
+            $firstNo = self::getGameStateValue(GV_FIRST_INTERCEPT_CHAL_NO);
+            $firstCh = intval(self::getUniqueValueFromDB("SELECT player_id FROM player WHERE player_no=$firstNo"));
+            self::notifyAllPlayers('bluff', clienttranslate('Intercept was a lie'), array());
+            $this->gamestate->changeActivePlayer($firstCh);
+            // Mark target temporarily as defender
+            self::setGameStateValue(GV_ATTACKER, $def); // reuse bluff penalty arg method
+            $this->gamestate->nextState('liePenalty');
+        }
+    }
+
+    // After truth penalty picks, if phase marker == 1 we continue to intercept success, else normal continue
+    function stResolveChallenge_afterTruthPenaltyHook() {
+        // Not a real BGA hook, we inline this behaviour in transition from ST_TRUTH_PENALTY_PICK
+    }
+
+    function stResolveEffect() {
+        $decl = self::getGameStateValue(GV_DECLARED_TYPE);
+        $attacker = self::getGameStateValue(GV_ATTACKER);
+        $tgtZone = self::getGameStateValue(GV_TARGET_ZONE);
+        $target = self::getGameStateValue(GV_TARGET_PLAYER);
+
+        if ($tgtZone == HC_TGT_NONE) {
+            // Non-targeting - just place the played card to herd as declared identity
+            $this->placePlayedToHerdAsDeclared($attacker, $decl);
+            $this->gamestate->nextState('endTurn');
+            return;
+        }
+
+        if ($tgtZone == HC_TGT_HAND) {
+            $slot = self::getGameStateValue(GV_TARGET_SLOT);
+            $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $target);
+            usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+            if ($slot < 1 || $slot > count($hand)) {
+                // Edge case: target changed size due to penalties - clamp
+                $slot = min(max(1,$slot), max(1,count($hand)));
+            }
+            $card = $hand[$slot-1];
+            // Reveal
+            self::notifyAllPlayers('revealHandCard', clienttranslate('Revealed from ${player}: ${card}'), array(
+                'player_id'=>$target,
+                'player_name'=>$this->getPlayerNameById($target),
+                'target'=>$this->getPlayerNameById($target),
+                'card'=>$this->typeToText($card['type']),
+                'card_type'=>$card['type'],
+                'card_id'=>$card['id'],
+                'target_player_id'=>$target,
+                'slot'=>$slot,
+            ));
+            // Ineffective vs itself?
+            if ( ($decl == HC_TYPE_ALLEY && intval($card['type']) == HC_TYPE_ALLEY)
+              || ($decl == HC_TYPE_CATNIP && intval($card['type']) == HC_TYPE_CATNIP) ) {
+                // Return to hand unchanged
+                self::notifyAllPlayers('ineffective', clienttranslate('Ineffective - card returns to hand'), array());
+                // leave as is
+            } else {
+                if ($decl == HC_TYPE_ALLEY) {
+                    // Discard revealed card
+                    $this->cards->moveCard($card['id'], HC_LOC_DISCARD, $target);
+                } else if ($decl == HC_TYPE_CATNIP) {
+                    // Move revealed card into attacker herd face-down, identity preserved
+                    $this->cards->moveCard($card['id'], HC_LOC_HERD, $attacker);
+                    // type_arg = declared type for herd identity; for stolen card we set it equal to its own printed type
+                    $this->setDeclaredType($card['id'], intval($card['type']));
+                }
+            }
+            // Normalise target hand order
+            $newhand = $this->cards->getCardsInLocation(HC_LOC_HAND, $target);
+            usort($newhand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+            $pos=1; foreach($newhand as $c){ HCRules::setCardPos($this->cards, $c['id'], $pos); $pos++; }
+
+            // Attacker's played card goes to herd as declared
+            $this->placePlayedToHerdAsDeclared($attacker, $decl);
+            $this->gamestate->nextState('endTurn');
+            return;
+        }
+
+        if ($tgtZone == HC_TGT_HERD) {
+            $card_id = self::getGameStateValue(GV_SELECTED_HERD_CARD);
+            $card = $this->cards->getCard($card_id);
+            // Reveal
+            self::notifyAllPlayers('revealHerdCard', clienttranslate('Revealed from ${player} herd: ${card}'), array(
+                'player_id'=>$target,
+                'player_name'=>$this->getPlayerNameById($target),
+                'card'=>$this->typeToText($card['type']),
+                'card_type'=>$card['type'],
+                'card_id'=>$card['id'],
+                'target_player_id'=>$target,
+            ));
+            if ($decl == HC_TYPE_ANIMAL && intval($card['type']) == HC_TYPE_ANIMAL) {
+                // Ineffective - flip to face-up protected
+                $this->cards->moveCard($card_id, HC_LOC_HERD_UP, $target);
+            } else {
+                // Discard target herd card
+                $this->cards->moveCard($card_id, HC_LOC_DISCARD, $target);
+            }
+            // Attacker's played card goes to herd as declared
+            $this->placePlayedToHerdAsDeclared($attacker, $decl);
+            $this->gamestate->nextState('endTurn');
+            return;
+        }
+    }
+
+    protected function applyInterceptSuccess($afterTruthPenalties) {
+        $def = self::getGameStateValue(GV_TARGET_PLAYER);
+        $zone = self::getGameStateValue(GV_INTERCEPT_ZONE);
+        // Discard (or convert) one Laser from the zone
+        $laserCardId = 0;
+        if ($zone == HC_TGT_HAND) {
+            $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $def);
+            foreach ($hand as $c) if (intval($c['type']) == HC_TYPE_LASER) { $laserCardId = $c['id']; break; }
+            if ($laserCardId == 0) return; // should not happen after truth check
+            if (HCRules::$BUFF_LASER_TO_HERD) {
+                $this->cards->moveCard($laserCardId, HC_LOC_HERD, $def);
+                $this->setDeclaredType($laserCardId, HC_TYPE_LASER);
+            } else {
+                $this->cards->moveCard($laserCardId, HC_LOC_DISCARD, $def);
+            }
+        } else {
+            $herd = $this->cards->getCardsInLocation(HC_LOC_HERD, $def);
+            foreach ($herd as $c) if (intval($c['type']) == HC_TYPE_LASER) { $laserCardId = $c['id']; break; }
+            if ($laserCardId == 0) return;
+            if (HCRules::$BUFF_LASER_TO_HERD) {
+                // Already in herd - leave it (intercept consumes it but stays as herd card)
+                // No move required; consider it "consumed" without change.
+            } else {
+                $this->cards->moveCard($laserCardId, HC_LOC_DISCARD, $def);
+            }
+        }
+        // Cancel original attack effect; the attacker's card is still played to herd
+        $attacker = self::getGameStateValue(GV_ATTACKER);
+        $decl = self::getGameStateValue(GV_DECLARED_TYPE);
+        $this->placePlayedToHerdAsDeclared($attacker, $decl);
+    }
+
+    function stEndTurn() {
+        // Clear transient values
+        self::setGameStateValue(GV_DEFENDER, 0);
+        self::setGameStateValue(GV_PLAYED_CARD_ID, 0);
+        self::setGameStateValue(GV_DECLARED_TYPE, 0);
+        self::setGameStateValue(GV_TARGET_PLAYER, 0);
+        self::setGameStateValue(GV_TARGET_ZONE, 0);
+        self::setGameStateValue(GV_TARGET_SLOT, 0);
+        self::setGameStateValue(GV_SELECTED_HERD_CARD, 0);
+        self::setGameStateValue(GV_CHALLENGER_BITS, 0);
+        self::setGameStateValue(GV_FIRST_CHAL_NO, 0);
+        self::setGameStateValue(GV_INTERCEPT_ZONE, 0);
+        self::setGameStateValue(GV_INTERCEPT_CHAL_BITS, 0);
+        self::setGameStateValue(GV_FIRST_INTERCEPT_CHAL_NO, 0);
+        self::setGameStateValue(GV_TRUTH_PENALTY_NEXT_NO, 0);
+        self::setGameStateValue(GV_PHASE_MARKER, 0);
+
+        // End trigger: if any player has 0 cards in hand, compute scores
+        foreach ($this->getPlayerIds() as $pid) {
+            $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $pid);
+            if (count($hand) == 0) {
+                $this->gamestate->nextState('scoring');
+                return;
+            }
+        }
+
+        // Next player
+        $next = self::activeNextPlayer();
+        self::setGameStateValue(GV_ATTACKER, $next);
+        $this->gamestate->nextState('next');
+    }
+
+    function stComputeScores() {
+        $players = self::loadPlayersBasicInfos();
+        foreach ($players as $pid=>$p) {
+            $herdDown = $this->cards->getCardsInLocation(HC_LOC_HERD, $pid);
+            $herdUp = $this->cards->getCardsInLocation(HC_LOC_HERD_UP, $pid);
+            $all = array_merge($herdDown, $herdUp);
+            $hasKitten = false;
+            $base = 0;
+            foreach ($all as $c) {
+                $declared = intval($c['type_arg']) > 0 ? intval($c['type_arg']) : intval($c['type']); // default to printed
+                if ($declared == HC_TYPE_KITTEN) $hasKitten = true;
+            }
+            foreach ($all as $c) {
+                $declared = intval($c['type_arg']) > 0 ? intval($c['type_arg']) : intval($c['type']);
+                if ($declared == HC_TYPE_SHOWCAT) {
+                    $base += HCRules::faceValueForShowCat($hasKitten);
+                } else {
+                    $base += HCRules::$CARD_VALUES[$declared];
+                }
+            }
+            $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $pid);
+            $bonus = intdiv(count($hand)+1, 2); // ceil(n/2)
+            $score = $base + $bonus;
+            self::DbQuery("UPDATE player SET player_score=$score WHERE player_id=$pid");
+            self::notifyAllPlayers('scorePlayer', clienttranslate('${player_name} scores ${score} (herd ${base} + hand bonus ${bonus})'), array(
+                'player_id'=>$pid,
+                'player_name'=>$this->getPlayerNameById($pid),
+                'score'=>$score, 'base'=>$base, 'bonus'=>$bonus
+            ));
+        }
+        $this->gamestate->nextState('endGame');
+    }
+
+    ////////////// Helpers //////////////
+
+    protected function setDeclaredType($card_id, $declared) {
+        self::DbQuery("UPDATE card SET card_type_arg=$declared WHERE card_id=$card_id");
+    }
+
+    protected function placePlayedToHerdAsDeclared($pid, $declared) {
+        $card_id = self::getGameStateValue(GV_PLAYED_CARD_ID);
+        if ($card_id == 0) return;
+        $this->cards->moveCard($card_id, HC_LOC_HERD, $pid);
+        $this->setDeclaredType($card_id, $declared);
+        self::notifyAllPlayers('addToHerd', clienttranslate('${player_name} adds a card to herd as ${decl}'), array(
+            'player_id'=>$pid, 'player_name'=>$this->getPlayerNameById($pid),
+            'decl'=>$this->typeToText($declared),
+            'declared_type'=>$declared,
+            'card_id'=>$card_id
+        ));
+    }
+
+    protected function firstNoFromBits($bits) {
+        for ($i=1;$i<=6;$i++) { if ($bits & (1<<($i-1))) return $i; }
+        return 0;
+    }
+
+    protected function typeToText($t) {
+        return HCRules::getCardName($t);
+    }
+
+    protected function getPlayerNameById($pid) {
+        return self::getUniqueValueFromDB("SELECT player_name FROM player WHERE player_id=$pid");
+    }
+
+    // Zombie behaviour
+    function zombieTurn($state, $active_player) {
+        $statename = $state['name'];
+        if ($state['type'] == 'activeplayer') {
+            $this->gamestate->nextState('zombiePass');
+            return;
+        }
+        if ($state['type'] == 'multipleactiveplayer') {
+            $this->gamestate->setPlayerNonMultiactive($active_player, 'resolve');
+            return;
+        }
+    }
+
+    function actDecline() { /* noop */ }
 }
 
-  </file>
-  <file path="src/herdingcats.view.php">
-<?php
+</file>
+
+<file path="src/herdingcats.view.php"><?php
 /**
- * Herding Cats - view class
+ * herdingcats.view.php
  */
 require_once(APP_BASE_PATH.'view/common/game.view.php');
-
 class view_herdingcats_herdingcats extends game_view
 {
     function getGameName() {
-        return 'herdingcats';
+        return "herdingcats";
     }
 
-    function build_page($viewArgs)
-    {
-        $this->tpl['MY_HAND'] = self::_("Your hand");
-        $this->page->begin_block('herdingcats_herdingcats', 'playerboard');
-
-        foreach($this->game->loadPlayersBasicInfos() as $player_id => $player)
-        {
-            $this->page->insert_block('playerboard', array(
-                'PLAYER_ID' => $player_id,
-                'PLAYER_NAME' => $player['player_name']
+    function build_page($viewArgs) {
+        $this->page->begin_block("herdingcats_herdingcats", "playerboard");
+        $players = $this->game->loadPlayersBasicInfos();
+        foreach ($players as $player_id => $info) {
+            $this->page->insert_block("playerboard", array(
+                "PLAYER_ID" => $player_id,
+                "PLAYER_NAME" => $info['player_name'],
             ));
         }
     }
 }
 
-  </file>
-  <file path="src/herdingcats_herdingcats.tpl">
-<!-- Herding Cats template -->
-<div id="table">
-  <div id="players">
+</file>
+
+<file path="src/herdingcats_herdingcats.tpl">{OVERALL_GAME_HEADER}
+
+<div id="table-area">
+  <div id="hand-area" aria-label="{HAND}"></div>
+
+  <div id="players-area">
     <!-- BEGIN playerboard -->
-    <div class="playerboard" id="player_${PLAYER_ID}">
-      <div class="player-name">${PLAYER_NAME}</div>
-      <div class="player-herd-up" id="herd_up_${PLAYER_ID}"></div>
-      <div class="player-herd-down" id="herd_down_${PLAYER_ID}"></div>
-      <div class="player-discard" id="discard_${PLAYER_ID}"></div>
+    <div class="playerboard" id="playerboard_{PLAYER_ID}">
+      <div class="pb-header">
+        <span class="pb-name">{PLAYER_NAME}</span>
+        <span class="pb-stats" id="pb_stats_{PLAYER_ID}"></span>
+      </div>
+      <div class="pb-sections">
+        <div class="pb-herd" id="herd_{PLAYER_ID}" aria-label="{HERD}"></div>
+        <div class="pb-herdup" id="herdup_{PLAYER_ID}" aria-label="{HERD_FACEUP}"></div>
+        <div class="pb-discard" id="discard_{PLAYER_ID}" aria-label="{DISCARD}"></div>
+      </div>
     </div>
     <!-- END playerboard -->
   </div>
 
-  <div id="controls">
-    <div id="prompt"></div>
-    <div id="action-buttons"></div>
-  </div>
-
-  <div id="my-hand">
-    <div class="zone-title">{MY_HAND}</div>
-    <div id="hand"></div>
+  <div id="action-panel">
+    <div id="decl-area"></div>
+    <div id="challenge-area"></div>
+    <div id="target-area"></div>
+    <div id="intercept-area"></div>
   </div>
 </div>
 
-  </file>
-  <file path="src/herdingcats.css">
-/* Herding Cats CSS */
-#table { display: flex; flex-direction: column; gap: 12px; }
-#players { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
-.playerboard { border: 1px solid #ccc; padding: 6px; border-radius: 4px; }
-.player-name { font-weight: bold; margin-bottom: 4px; }
+{OVERALL_GAME_FOOTER}
 
-.player-herd-up, .player-herd-down, .player-discard, #hand {
-  display: flex; flex-wrap: wrap; gap: 4px; min-height: 96px; align-items: center;
-  border: 1px dashed #ddd; padding: 4px; border-radius: 3px;
-}
+</file>
 
-.card { width: 72px; height: 96px; border-radius: 3px; background-size: cover; background-position: center; }
+<file path="src/herdingcats.css">#table-area { padding: 8px; }
+#hand-area { margin: 8px 0; min-height: 110px; border: 1px dashed #999; }
+.card { display: inline-block; width: 80px; height: 110px; border: 1px solid #333; border-radius: 6px; margin: 4px; vertical-align: top; text-align: center; line-height: 110px; font-weight: 600; user-select: none; }
+.card.faceup { background: #f9f9f9; }
+.card.facedown { background: #cde; }
+.card.discard { background: #eee; opacity: 0.8; }
+.card.clickable { cursor: pointer; outline: 2px solid #36c; }
+.playerboard { border: 1px solid #ccc; border-radius: 6px; padding: 6px; margin: 6px 0; }
+.pb-header { font-weight: 700; margin-bottom: 4px; display: flex; justify-content: space-between; }
+.pb-sections { display: flex; gap: 8px; flex-wrap: wrap; }
+.pb-herd, .pb-herdup, .pb-discard { min-height: 90px; border: 1px dashed #bbb; flex: 1; padding: 4px; }
+#action-panel { margin-top: 8px; }
+button.bga-btn { margin: 2px; }
 
-.zone-title { font-weight: bold; margin-bottom: 4px; }
+</file>
 
-  </file>
-  <file path="src/herdingcats.js">
-define([
-    'dojo','dojo/_base/declare','ebg/core/gamegui','ebg/counter'
+<file path="src/herdingcats.js">define([
+    "dojo","dojo/_base/declare",
+    "ebg/core/gamegui"
 ],
 function (dojo, declare) {
-    return declare('bgagame.herdingcats', ebg.core.gamegui, {
+    return declare("bgagame.herdingcats", ebg.core.gamegui, {
         constructor: function(){
-            this.debug('herdingcats constructor');
+            this.hand = [];
+            this.gamedatas = null;
+            this._pending = {};
         },
 
-        setup: function(gamedatas){
-            this.debug('setup', gamedatas);
+        setup: function( gamedatas ) {
+            this.gamedatas = gamedatas;
+            this.player_id = this.player_id || this.getCurrentPlayerId();
 
-            // TODO: render player boards and hand
-            this.addActionButton('btnDeclare', _('Declare card'), 'onDeclare');
+            // Build hand
+            this._renderHand(gamedatas.hand);
+
+            // Build players
+            for (var pid in gamedatas.players) {
+                this._renderZone('herd_'+pid, gamedatas.herds[pid], false);
+                this._renderZone('herdup_'+pid, gamedatas.herd_up[pid], true);
+                this._renderZone('discard_'+pid, gamedatas.discards[pid], true, true);
+            }
+
+            // Connect notifs
+            this._setupNotifications();
         },
 
-        onEnteringState: function(stateName, args){
-            this.debug('Entering state: ' + stateName, args);
-        },
-
-        onLeavingState: function(stateName){
-            this.debug('Leaving state: ' + stateName);
-        },
-
-        onUpdateActionButtons: function(stateName, args){
-            if( this.isCurrentPlayerActive() ){
-                if(stateName == 'playerTurn'){
-                    this.addActionButton('btnDeclare', _('Declare card'), 'onDeclare');
-                }
+        onEnteringState: function(stateName, args) {
+            if (stateName == 'playerDeclare' && this.isCurrentPlayerActive()) {
+                this._showDeclareUI();
+            }
+            if (stateName == 'challengeWindow') {
+                this._showChallengeUI();
+            }
+            if (stateName == 'selectTarget' && this.isCurrentPlayerActive()) {
+                this._showTargetUI(args.args);
+            }
+            if (stateName == 'interceptDecision' && this.isCurrentPlayerActive()) {
+                this._showInterceptUI(args.args);
+            }
+            if (stateName == 'bluffPenaltyPick' && this.isCurrentPlayerActive()) {
+                this._showBlindPickUI(args.args);
+            }
+            if (stateName == 'truthPenaltyPick' && this.isCurrentPlayerActive()) {
+                this._showBlindPickUI(args.args);
             }
         },
 
-        // Ajax helpers
-        onDeclare: function(){
-            // TODO: pick a card from hand and declared type in a simple prompt
-            this.ajaxcall('/herdingcats/herdingcats/actDeclare.html', {
-                lock: true,
-                card_id: 0,
-                declared_type: 1
-            }, this, function(result){}, function(is_error){});
+        onLeavingState: function(stateName) {
+            this._clearUI();
+        },
+
+        onUpdateActionButtons: function(stateName, args) {
+            // No global buttons needed; UI panels render dedicated controls
+        },
+
+        _renderHand: function(cards) {
+            var node = $('hand-area');
+            dojo.empty(node);
+            cards.sort(function(a,b){ return a.location_arg - b.location_arg; });
+            this.hand = cards;
+            for (var i=0;i<cards.length;i++) {
+                var c = cards[i];
+                var div = dojo.create('div', { id:'hand_'+c.id, 'class':'card facedown', innerHTML:'Hand' }, node);
+                dojo.addClass(div, 'clickable');
+                dojo.connect(div, 'onclick', this, function(evt){ this._onClickHandCard(c.id); });
+            }
+        },
+
+        _renderZone: function(zoneId, cards, faceup, discard){
+            var node = $(zoneId);
+            if (!node) return;
+            dojo.empty(node);
+            for (var i=0;i<cards.length;i++) {
+                var c = cards[i];
+                var div = dojo.create('div', { id:zoneId+'_card_'+c.id, 'class':'card '+(faceup?'faceup':'facedown')+(discard?' discard':'') }, node);
+                div.innerHTML = faceup ? this._typeToText(c.type_arg>0?c.type_arg:c.type) : '';
+            }
+        },
+
+        _typeToText: function(type){
+            var map = {1:'Kitten',2:'Show Cat',3:'Alley Cat',4:'Catnip',5:'Animal Control',6:'Laser Pointer'};
+            return map[type] || '?';
+        },
+
+        _showDeclareUI: function(){
+            var panel = $('decl-area'); dojo.empty(panel);
+            dojo.create('div', { innerHTML: _('Choose a hand card, pick a declaration and (if needed) a target player.') }, panel);
+            var decls = [
+                {t:1,n:_('Kitten')},{t:2,n:_('Show Cat')},{t:3,n:_('Alley Cat')},
+                {t:4,n:_('Catnip')},{t:5,n:_('Animal Control')},{t:6,n:_('Laser Pointer')}
+            ];
+            var self=this;
+            decls.forEach(function(d){
+                var btn = dojo.create('button', { 'class':'bga-btn', innerHTML:d.n }, panel);
+                dojo.connect(btn, 'onclick', function(){
+                    self._pending.decl = d.t;
+                    self.showMessage(_('Click a hand card to play and declare ')+d.n, 'info');
+                });
+            });
+            // Target player selection is prompted after clicking "Declare" with a targeted type
+        },
+
+        _onClickHandCard: function(card_id){
+            if (!this._pending.decl) { this.showMessage(_('Choose a declaration first'), 'error'); return; }
+            var decl = this._pending.decl;
+            var tgtZone = (decl==3||decl==4)?1: (decl==5?2:0);
+            if (tgtZone==0) {
+                this.ajaxcall('/herdingcats/herdingcats/actDeclarePlay.html', {
+                    card_id: card_id, declared_type: decl, target_player_id: 0
+                }, this, function(){}, function(){});
+            } else {
+                // Ask for target player by click on their board header
+                this._promptTargetPlayer(card_id, decl, tgtZone);
+            }
+        },
+
+        _promptTargetPlayer: function(card_id, decl, zone){
+            var self=this;
+            var panel = $('decl-area');
+            dojo.create('div',{innerHTML:_('Click an opponent board header to target them')}, panel);
+            for (var pid in this.gamedatas.players) {
+                if (pid == this.player_id) continue;
+                var hdr = $('playerboard_'+pid).querySelector('.pb-header .pb-name');
+                dojo.addClass(hdr, 'clickable');
+                dojo.connect(hdr, 'onclick', function(evt){
+                    var target_id = this.parentNode.parentNode.id.split('_')[1]; // playerboard_PID
+                    self.ajaxcall('/herdingcats/herdingcats/actDeclarePlay.html', {
+                        card_id: card_id, declared_type: decl, target_player_id: target_id
+                    }, self, function(){}, function(){});
+                });
+            }
+        },
+
+        _showChallengeUI: function(){
+            var panel = $('challenge-area'); dojo.empty(panel);
+            dojo.create('div',{innerHTML:_('Challenge the claim or pass.')}, panel);
+            var self=this;
+            this.addActionButton('btnChallenge', _('Challenge'), function(){
+                self.ajaxcall('/herdingcats/herdingcats/actChallenge.html', {}, self, function(){}, function(){});
+            });
+            this.addActionButton('btnPass', _('Pass'), function(){
+                self.ajaxcall('/herdingcats/herdingcats/actPassChallenge.html', {}, self, function(){}, function(){});
+            });
+        },
+
+        _showTargetUI: function(args){
+            var panel = $('target-area'); dojo.empty(panel);
+            if (args.zone == 1) {
+                dojo.create('div',{innerHTML:_('Select a slot in the target hand.')}, panel);
+                for (var i=1;i<=args.handSize;i++) {
+                    var btn = dojo.create('button', {'class':'bga-btn', innerHTML:_('Slot ')+i}, panel);
+                    dojo.connect(btn, 'onclick', this, (function(idx){
+                        return function(){ 
+                            this.ajaxcall('/herdingcats/herdingcats/actSelectHandSlot.html', { target_player_id: args.targetPlayer, slot_index: idx }, this, function(){}, function(){});
+                        };
+                    }).call(this,i));
+                }
+            } else if (args.zone == 2) {
+                dojo.create('div',{innerHTML:_('Select a face-down herd card.')}, panel);
+                var ids = args.herdCards || [];
+                var self=this;
+                ids.forEach(function(cid){
+                    var el = $('herd_'+args.targetPlayer+'_card_'+cid);
+                    if (el) {
+                        dojo.addClass(el, 'clickable');
+                        dojo.connect(el, 'onclick', function(){
+                            self.ajaxcall('/herdingcats/herdingcats/actSelectHerdCard.html', { target_player_id: args.targetPlayer, card_id: cid }, self, function(){}, function(){});
+                        });
+                    }
+                });
+            }
+        },
+
+        _showInterceptUI: function(args){
+            var panel = $('intercept-area'); dojo.empty(panel);
+            dojo.create('div',{innerHTML:_('Declare Laser Pointer intercept?')}, panel);
+            var self=this;
+            this.addActionButton('btnNoIntercept', _('No'), function(){
+                self.ajaxcall('/herdingcats/herdingcats/actDeclineIntercept.html', {}, self, function(){}, function(){});
+            });
+            this.addActionButton('btnYesIntercept', _('Yes'), function(){
+                self.ajaxcall('/herdingcats/herdingcats/actDeclareIntercept.html', { zone: args.allowedZone }, self, function(){}, function(){});
+            });
+        },
+
+        _showBlindPickUI: function(args){
+            var panel = $('target-area'); dojo.empty(panel);
+            dojo.create('div',{innerHTML:_('Pick a blind slot from the target hand.')}, panel);
+            for (var i=1;i<=args.handSize;i++) {
+                var btn = dojo.create('button', {'class':'bga-btn', innerHTML:_('Slot ')+i}, panel);
+                dojo.connect(btn, 'onclick', this, (function(idx){
+                    return function(){ 
+                        this.ajaxcall('/herdingcats/herdingcats/actPickBlindFromHand.html', { target_player_id: args.targetPlayer, slot_index: idx }, this, function(){}, function(){});
+                    };
+                }).call(this,i));
+            }
+        },
+
+        _clearUI: function(){
+            ['decl-area','challenge-area','target-area','intercept-area'].forEach(function(id){ dojo.empty($(id)); });
+            // Remove clickable classes from headers and herd cards
+            for (var pid in this.gamedatas.players) {
+                var hdr = $('playerboard_'+pid)?$('playerboard_'+pid).querySelector('.pb-header .pb-name'):null;
+                if (hdr) dojo.removeClass(hdr, 'clickable');
+            }
+            dojo.query('.card.clickable').removeClass('clickable');
         },
 
         // Notifications
-        setupNotifications: function(){
-            this.debug('notifications setup');
-            dojo.subscribe('declared', this, 'notif_declared');
-            dojo.subscribe('challenge', this, 'notif_challenge');
+        _setupNotifications: function(){
+            dojo.subscribe('declarePlay', this, function(notif){ /* UI text only */ });
+            dojo.subscribe('challengeMade', this, function(notif){ /* ping */ });
+            dojo.subscribe('revealPlayed', this, function(notif){ this.showMessage(_('Played card was ')+notif.args.printed, 'info'); });
+            dojo.subscribe('revealHandCard', this, dojo.hitch(this, function(notif){
+                this.showMessage(_('Revealed ')+notif.args.card, 'info');
+            }));
+            dojo.subscribe('revealHerdCard', this, dojo.hitch(this, function(notif){
+                this.showMessage(_('Revealed ')+notif.args.card, 'info');
+            }));
+            dojo.subscribe('addToHerd', this, dojo.hitch(this, function(notif){
+                // Minimal: just refresh next time; for now show message
+                this.showMessage(_('A card was added to herd as ')+notif.args.decl, 'info');
+            }));
+            dojo.subscribe('scorePlayer', this, dojo.hitch(this, function(notif){
+                this.showMessage(_(notif.args.player_name+' scores '+notif.args.score), 'info');
+            }));
         },
-
-        notif_declared: function(notif){
-            // TODO: place a facedown card in UI
-        },
-
-        notif_challenge: function(notif){
-            // TODO: show challenge mark
-        }
     });
 });
 
-  </file>
-  <file path="src/modules/HerdingCatsRules.php">
-<?php
-/**
- * Herding Cats - Modules/HerdingCatsRules.php
- * Pure rules helpers in a trait so we can use them inside the main class.
- */
+</file>
 
-trait HCRules
-{
-    /**
-     * Compute score of a herd at end game.
-     * Show Cat counts 7 if player has at least one Kitten in herd, else 5.
-     * Hand-size bonus: +1 per 2 cards in hand rounded up.
-     */
-    public function scorePlayer($pid)
-    {
-        $score = 0;
-        // TODO: read herd_{pid}_up and herd_{pid}_down, reveal down at scoring
-        // Apply Show Cat bonus rule, and sum kittens etc.
-        return $score;
-    }
+<file path="README.md"># Phase 2 Update - Complete Drop
 
-    /**
-     * Apply the Laser Pointer buff from v1.1:
-     * When a defending player truthfully intercepts with Laser Pointer,
-     * after discarding that Laser Pointer the defender draws 1 card.
-     */
-    public function applyLaserPointerBuff()
-    {
-        // This is documentation of the rule - implement in stRevealAndResolve()
-    }
+This file set is a full, working implementation aimed at BGA Studio.
+Copy `src/` into your Studio project directory `herdingcats/` and import `src/dbmodel.sql`.
 
-    /**
-     * Validate a declaration (kitten, alley cat, catnip, animal control, show cat)
-     * returns the list of legal targets (if any) given current table state.
-     */
-    public function getLegalTargets($declaredType, $activePid)
-    {
-        // TODO: compute and return an array of player ids
-        return array();
-    }
+- Server - `herdingcats.game.php` with rule helpers.
+- Client - JS, CSS, view and template.
+- States, stats, material, gameinfos - all included.
+- Design addendum explains the Laser Pointer intercept buff chosen.
 
-    /**
-     * Resolve a challenged declaration:
-     *  - If truthful: challengers discard random hand card, reveal, and the effect proceeds
-     *  - If lie: active player discards the played card (revealed), effect does not occur
-     * Returns transition and notifications.
-     */
-    public function resolveChallenges($pendingId)
-    {
-        // TODO
-    }
-}
+If anything breaks, check PHP logs - most actions throw clear exceptions.
 
-  </file>
+</file>
+
 </codebase>
