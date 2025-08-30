@@ -1,8 +1,173 @@
 <?xml version="1.0" ?>
 <codebase>
+<file path="src/states.inc.php"><?php
+/**
+ * State machine for Herding Cats
+ *
+ * - Enforce selectTarget BEFORE the challenge if target is missing.
+ * - Allow selectTarget to proceed to the challenge via transition 'goChallenge'.
+ */
+
+$machinestates = array(
+
+    ST_GAME_SETUP => array(
+        "name" => "gameSetup",
+        "description" => "",
+        "type" => "manager",
+        "action" => "stGameSetup",
+        "transitions" => array( "" => ST_PLAYER_DECLARE )
+    ),
+
+    ST_PLAYER_DECLARE => array(
+        "name" => "playerDeclare",
+        "description" => clienttranslate('${actplayer} must play a card and declare'),
+        "descriptionmyturn" => clienttranslate('${you} must play a card and declare'),
+        "type" => "activeplayer",
+        "args" => "argPlayerDeclare",
+        "possibleactions" => array( "actDeclarePlay" ),
+        "transitions" => array(
+            "toSelectTarget" => ST_SELECT_TARGET,
+            "goChallenge" => ST_CHALLENGE_WINDOW
+        )
+    ),
+
+    ST_CHALLENGE_WINDOW => array(
+        "name" => "challengeWindow",
+        "description" => clienttranslate('Players may challenge the claim'),
+        "type" => "multipleactiveplayer",
+        "args" => "argChallengeWindow",
+        "possibleactions" => array( "actChallenge", "actPassChallenge" ),
+        "transitions" => array(
+            "resolve" => ST_RESOLVE_CHALLENGE
+        )
+    ),
+
+    ST_RESOLVE_CHALLENGE => array(
+        "name" => "resolveChallenge",
+        "type" => "game",
+        "action" => "stResolveChallenge",
+        "transitions" => array(
+            "bluffPenalty" => ST_BLUFF_PENALTY_PICK,
+            "truthPenalty" => ST_TRUTH_PENALTY_PICK,
+            "truthNoPenalty" => ST_RESOLVE_EFFECT,
+            "noChallenge" => ST_SELECT_TARGET
+        )
+    ),
+
+    // Attacker selects target player (if not yet chosen) OR,
+    // if already chosen and truthful, selects slot/herd card
+    ST_SELECT_TARGET => array(
+        "name" => "selectTarget",
+        "description" => clienttranslate('${actplayer} must select the target / slot'),
+        "descriptionmyturn" => clienttranslate('${you} must select the target / slot'),
+        "type" => "activeplayer",
+        "args" => "argSelectTarget",
+        "possibleactions" => array( "actSelectTargetPlayer", "actSelectHandSlot", "actSelectHerdCard" ),
+        "transitions" => array(
+            "goChallenge" => ST_CHALLENGE_WINDOW,
+            "toIntercept" => ST_INTERCEPT_DECISION
+        )
+    ),
+
+    ST_INTERCEPT_DECISION => array(
+        "name" => "interceptDecision",
+        "description" => clienttranslate('${actplayer} may declare a Laser Pointer intercept'),
+        "descriptionmyturn" => clienttranslate('${you} may declare a Laser Pointer intercept'),
+        "type" => "activeplayer",
+        "args" => "argInterceptDecision",
+        "possibleactions" => array( "actDeclineIntercept", "actDeclareIntercept" ),
+        "transitions" => array(
+            "toResolve" => ST_RESOLVE_EFFECT,
+            "toInterceptChallenge" => ST_INTERCEPT_CHALLENGE_WINDOW
+        )
+    ),
+
+    ST_INTERCEPT_CHALLENGE_WINDOW => array(
+        "name" => "interceptChallengeWindow",
+        "description" => clienttranslate('Players may challenge the intercept'),
+        "type" => "multipleactiveplayer",
+        "args" => "argInterceptChallengeWindow",
+        "possibleactions" => array( "actChallengeIntercept", "actPassIntercept" ),
+        "transitions" => array(
+            "resolve" => ST_RESOLVE_INTERCEPT
+        )
+    ),
+
+    ST_RESOLVE_INTERCEPT => array(
+        "name" => "resolveIntercept",
+        "type" => "game",
+        "action" => "stResolveIntercept",
+        "transitions" => array(
+            "truthPenalty" => ST_TRUTH_PENALTY_PICK,
+            "liePenalty" => ST_BLUFF_PENALTY_PICK,
+            "success" => ST_END_TURN
+        )
+    ),
+
+    ST_BLUFF_PENALTY_PICK => array(
+        "name" => "bluffPenaltyPick",
+        "description" => clienttranslate('${actplayer} must discard a random revealed card from target hand'),
+        "descriptionmyturn" => clienttranslate('${you} must discard a random revealed card from target hand'),
+        "type" => "activeplayer",
+        "args" => "argBluffPenaltyPick",
+        "possibleactions" => array( "actPickBlindFromHand" ),
+        "transitions" => array(
+            "toEffect" => ST_RESOLVE_EFFECT,
+            "done" => ST_END_TURN
+        )
+    ),
+
+    ST_TRUTH_PENALTY_PICK => array(
+        "name" => "truthPenaltyPick",
+        "description" => clienttranslate('${actplayer} must discard a random revealed card from their hand'),
+        "descriptionmyturn" => clienttranslate('${you} must discard a random revealed card from your hand'),
+        "type" => "activeplayer",
+        "args" => "argTruthPenaltyPick",
+        "possibleactions" => array( "actPickBlindFromHand" ),
+        "transitions" => array(
+            "next" => ST_TRUTH_PENALTY_PICK,
+            "doneIntercept" => ST_RESOLVE_INTERCEPT,
+            "done" => ST_RESOLVE_EFFECT
+        )
+    ),
+
+    ST_RESOLVE_EFFECT => array(
+        "name" => "resolveEffect",
+        "type" => "game",
+        "action" => "stResolveEffect",
+        "transitions" => array( "endTurn" => ST_END_TURN )
+    ),
+
+    ST_END_TURN => array(
+        "name" => "endTurn",
+        "type" => "game",
+        "action" => "stEndTurn",
+        "transitions" => array(
+            "next" => ST_PLAYER_DECLARE,
+            "scoring" => ST_COMPUTE_SCORES
+        )
+    ),
+
+    ST_COMPUTE_SCORES => array(
+        "name" => "computeScores",
+        "type" => "game",
+        "action" => "stComputeScores",
+        "transitions" => array( "endGame" => ST_END_GAME )
+    ),
+
+    ST_END_GAME => array(
+        "name" => "gameEnd",
+        "type" => "manager",
+        "action" => "stGameEnd",
+        "args" => "argGameEnd"
+    ),
+);
+?></file>
+
 <file path="src/herdingcats.game.php"><?php
 /**
- * Herding Cats - main game class (hotfix + target UI support)
+ * Herding Cats - main game class
+ * Enforce target-before-challenge and fix "stuck on select target"
  */
 require_once(APP_GAMEMODULE_PATH.'module/table/table.game.php');
 
@@ -36,7 +201,6 @@ class herdingcats extends Table
     }
 
     protected function getGameName() { return 'herdingcats'; }
-
     protected function getPlayerIds() { return array_keys(self::loadPlayersBasicInfos()); }
 
     protected function getOrderedPlayerIds($startPlayerId=null) {
@@ -45,10 +209,6 @@ class herdingcats extends Table
         if ($startPlayerId === null) return $ids;
         while ($ids[0] != $startPlayerId) { $x = array_shift($ids); $ids[] = $x; }
         return $ids;
-    }
-
-    protected function nextPlayerId($pid) {
-        $ids = $this->getOrderedPlayerIds($pid); array_shift($ids); return $ids[0];
     }
 
     // ---------- Setup ----------
@@ -72,6 +232,7 @@ class herdingcats extends Table
             foreach ($removed as $t) $cards_to_create[] = array('type'=>$t,'type_arg'=>0,'nbr'=>1,'location'=>HC_LOC_REMOVED,'location_arg'=>$pid);
         }
         $this->cards->createCards($cards_to_create, 'card');
+
         foreach ($this->getPlayerIds() as $pid) {
             $handCards = $this->cards->getCardsInLocation(HC_LOC_HAND, $pid);
             usort($handCards, function($a,$b){ return $a['id'] <=> $b['id']; });
@@ -97,7 +258,7 @@ class herdingcats extends Table
         usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
         $result['hand'] = $hand;
 
-        // Add public hand counts so the client can preview the correct number of facedown cards per opponent
+        // public board & counts
         $result['herds'] = array(); $result['herd_up']=array(); $result['discards']=array(); $result['hand_counts']=array();
         foreach ($players as $pid=>$p) {
             $result['herds'][$pid] = array_values($this->cards->getCardsInLocation(HC_LOC_HERD, $pid));
@@ -115,18 +276,6 @@ class herdingcats extends Table
             'selectedHerdCard' => self::getGameStateValue(GV_SELECTED_HERD_CARD),
         );
         return $result;
-    }
-
-    function getGameProgression() {
-        $players = self::loadPlayersBasicInfos();
-        $total=0; $played=0;
-        foreach ($players as $pid=>$p) {
-            $total += 7;
-            $played += count($this->cards->getCardsInLocation(HC_LOC_HERD,$pid));
-            $played += count($this->cards->getCardsInLocation(HC_LOC_HERD_UP,$pid));
-            $played += count($this->cards->getCardsInLocation(HC_LOC_DISCARD,$pid));
-        }
-        return $total? min(100, intval($played*100/$total)) : 0;
     }
 
     // ---------- Actions ----------
@@ -147,38 +296,117 @@ class herdingcats extends Table
             throw new BgaUserException(self::_("You must select a card from your hand."));
         }
         $tgtZone = HCRules::getTargetZoneForDeclared($declared_type);
-        if ($tgtZone == HC_TGT_NONE) {
-            $target_player_id = 0;
-        } else {
-            if ($target_player_id == 0 || $target_player_id == $player_id) {
-                throw new BgaUserException(self::_("Choose an opponent to target before declaring."));
-            }
-        }
 
+        // Move the card to played immediately
         $this->cards->moveCard($card_id, HC_LOC_PLAYED, $player_id);
 
         self::setGameStateValue(GV_ATTACKER, $player_id);
         self::setGameStateValue(GV_PLAYED_CARD_ID, $card_id);
         self::setGameStateValue(GV_DECLARED_TYPE, $declared_type);
-        self::setGameStateValue(GV_TARGET_PLAYER, $target_player_id);
         self::setGameStateValue(GV_TARGET_ZONE, $tgtZone);
         self::setGameStateValue(GV_TARGET_SLOT, 0);
         self::setGameStateValue(GV_SELECTED_HERD_CARD, 0);
         self::setGameStateValue(GV_CHALLENGER_BITS, 0);
         self::setGameStateValue(GV_FIRST_CHAL_NO, 0);
 
-        self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl}${target_suffix}'), array(
+        if ($tgtZone == HC_TGT_NONE) {
+            self::setGameStateValue(GV_TARGET_PLAYER, 0);
+            self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl}'), array(
+                'player_id' => $player_id,
+                'player_name' => $this->getPlayerNameById($player_id),
+                'decl' => HCRules::declaredToText($declared_type),
+                'declared_type' => $declared_type
+            ));
+            // Straight to challenge
+            $this->gamestate->setAllPlayersMultiactive();
+            $this->gamestate->setPlayerNonMultiactive($player_id, 'resolve');
+            $this->gamestate->nextState('goChallenge');
+            return;
+        }
+
+        // Target is required
+        if ($target_player_id == 0 || $target_player_id == $player_id) {
+            // Defer: force "Select target player" BEFORE challenge
+            self::setGameStateValue(GV_TARGET_PLAYER, 0);
+            self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl} (target to be chosen)'), array(
+                'player_id' => $player_id,
+                'player_name' => $this->getPlayerNameById($player_id),
+                'decl' => HCRules::declaredToText($declared_type),
+                'declared_type' => $declared_type
+            ));
+            $this->gamestate->nextState('toSelectTarget');
+            return;
+        }
+
+        // Target provided - proceed to challenge
+        self::setGameStateValue(GV_TARGET_PLAYER, $target_player_id);
+        self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl} (targeting ${target})'), array(
             'player_id' => $player_id,
             'player_name' => $this->getPlayerNameById($player_id),
             'decl' => HCRules::declaredToText($declared_type),
             'declared_type' => $declared_type,
+            'target' => $this->getPlayerNameById($target_player_id),
             'target_player_id' => $target_player_id,
-            'target_zone' => $tgtZone,
-            'target_suffix' => $tgtZone==HC_TGT_NONE ? '' : ' (' . self::_('targeting ') . $this->getPlayerNameById($target_player_id) . ')',
+            'target_zone' => $tgtZone
         ));
-
         $this->gamestate->setAllPlayersMultiactive();
         $this->gamestate->setPlayerNonMultiactive($player_id, 'resolve');
+        $this->gamestate->nextState('goChallenge');
+    }
+
+    // Choose the target player when required, before challenge
+    function argSelectTarget() {
+        $decl = self::getGameStateValue(GV_DECLARED_TYPE);
+        $zone = HCRules::getTargetZoneForDeclared($decl);
+        $tpid = self::getGameStateValue(GV_TARGET_PLAYER);
+        $res = array('zone'=>$zone, 'targetPlayer'=>$tpid);
+
+        if ($tpid == 0) {
+            // Provide opponents for the picker
+            $players = self::loadPlayersBasicInfos();
+            $pid = self::getActivePlayerId();
+            $others = array();
+            foreach ($players as $opid=>$p) {
+                if (intval($opid) == intval($pid)) continue;
+                $others[$opid] = array(
+                    'name' => $p['player_name'],
+                    'handSize' => count($this->cards->getCardsInLocation(HC_LOC_HAND, $opid)),
+                    'herdCount' => count($this->cards->getCardsInLocation(HC_LOC_HERD, $opid)),
+                );
+            }
+            $res['opponents'] = $others;
+            return $res;
+        }
+
+        if ($zone == HC_TGT_HAND) {
+            $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $tpid);
+            usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
+            $res['handSize'] = count($hand);
+        } else if ($zone == HC_TGT_HERD) {
+            $herd = $this->cards->getCardsInLocation(HC_LOC_HERD, $tpid);
+            $res['herdCards'] = array_values(array_map(function($c){ return $c['id']; }, $herd));
+        }
+        return $res;
+    }
+
+    function actSelectTargetPlayer($target_player_id) {
+        self::checkAction('actSelectTargetPlayer');
+        $attacker = self::getActivePlayerId();
+        $target_player_id = intval($target_player_id);
+        if ($target_player_id == 0 || $target_player_id == $attacker) throw new BgaUserException(self::_("Select an opponent."));
+        if (self::getGameStateValue(GV_DECLARED_TYPE) == 0) throw new BgaUserException(self::_("No declaration in progress."));
+
+        self::setGameStateValue(GV_TARGET_PLAYER, $target_player_id);
+        self::notifyAllPlayers('targetChosen', clienttranslate('${player_name} targets ${target}'), array(
+            'player_id'=>$attacker,
+            'player_name'=>$this->getPlayerNameById($attacker),
+            'target'=>$this->getPlayerNameById($target_player_id),
+            'target_player_id'=>$target_player_id
+        ));
+
+        // Open the challenge window
+        $this->gamestate->setAllPlayersMultiactive();
+        $this->gamestate->setPlayerNonMultiactive($attacker, 'resolve');
         $this->gamestate->nextState('goChallenge');
     }
 
@@ -328,22 +556,6 @@ class herdingcats extends Table
         }
     }
 
-    function argSelectTarget() {
-        $decl = self::getGameStateValue(GV_DECLARED_TYPE);
-        $zone = HCRules::getTargetZoneForDeclared($decl);
-        $tpid = self::getGameStateValue(GV_TARGET_PLAYER);
-        $res = array('zone'=>$zone, 'targetPlayer'=>$tpid);
-        if ($zone == HC_TGT_HAND) {
-            $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $tpid);
-            usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
-            $res['handSize'] = count($hand);
-        } else if ($zone == HC_TGT_HERD) {
-            $herd = $this->cards->getCardsInLocation(HC_LOC_HERD, $tpid);
-            $res['herdCards'] = array_values(array_map(function($c){ return $c['id']; }, $herd));
-        }
-        return $res;
-    }
-
     function actSelectHandSlot($target_player_id, $slot_index) {
         self::checkAction('actSelectHandSlot');
         $slot_index = intval($slot_index); $target_player_id = intval($target_player_id);
@@ -367,12 +579,7 @@ class herdingcats extends Table
         $this->gamestate->nextState('toIntercept');
     }
 
-    function argInterceptDecision() {
-        $decl = self::getGameStateValue(GV_DECLARED_TYPE);
-        $zone = self::getGameStateValue(GV_TARGET_ZONE);
-        return array('allowedZone'=>$zone, 'declared'=>$decl);
-    }
-
+    function argInterceptDecision() { return array('allowedZone'=> self::getGameStateValue(GV_TARGET_ZONE)); }
     function actDeclineIntercept() { self::checkAction('actDeclineIntercept'); $this->gamestate->nextState('toResolve'); }
 
     function actDeclareIntercept($zone) {
@@ -486,11 +693,8 @@ class herdingcats extends Table
                 'player_name'=>$this->getPlayerNameById($target),
                 'target'=>$this->getPlayerNameById($target),
                 'card'=>$this->typeToText($card['type']),
-                'card_type'=>$card['type'],
-                'card_id'=>$card['id'],
-                'target_player_id'=>$target,
-                'slot'=>$slot,
-            ));
+                'card_type'=>$card['type']),
+            );
             if ( ($decl == HC_TYPE_ALLEY && intval($card['type']) == HC_TYPE_ALLEY)
               || ($decl == HC_TYPE_CATNIP && intval($card['type']) == HC_TYPE_CATNIP) ) {
                 self::notifyAllPlayers('ineffective', clienttranslate('Ineffective - card returns to hand'), array());
@@ -565,9 +769,7 @@ class herdingcats extends Table
                   GV_CHALLENGER_BITS,GV_FIRST_CHAL_NO,GV_INTERCEPT_ZONE,GV_INTERCEPT_CHAL_BITS,GV_FIRST_INTERCEPT_CHAL_NO,
                   GV_TRUTH_PENALTY_NEXT_NO,GV_PHASE_MARKER] as $k) self::setGameStateValue($k,0);
 
-        foreach ($this->getPlayerIds() as $pid) {
-            if (count($this->cards->getCardsInLocation(HC_LOC_HAND, $pid)) == 0) { $this->gamestate->nextState('scoring'); return; }
-        }
+        foreach ($this->getPlayerIds() as $pid) if (count($this->cards->getCardsInLocation(HC_LOC_HAND, $pid)) == 0) { $this->gamestate->nextState('scoring'); return; }
         $next = self::activeNextPlayer();
         self::setGameStateValue(GV_ATTACKER, $next);
         $this->gamestate->nextState('next');
@@ -598,7 +800,6 @@ class herdingcats extends Table
     }
 
     protected function setDeclaredType($card_id, $declared) { self::DbQuery("UPDATE card SET card_type_arg=$declared WHERE card_id=$card_id"); }
-
     protected function placePlayedToHerdAsDeclared($pid, $declared) {
         $card_id = self::getGameStateValue(GV_PLAYED_CARD_ID);
         if ($card_id == 0) return;
@@ -611,9 +812,7 @@ class herdingcats extends Table
     }
 
     protected function firstNoFromBits($bits) { for ($i=1;$i<=6;$i++){ if ($bits & (1<<($i-1))) return $i; } return 0; }
-
     protected function typeToText($t) { require_once('modules/HerdingCatsRules.php'); return HCRules::getCardName($t); }
-
     protected function getPlayerNameById($pid) { return self::getUniqueValueFromDB("SELECT player_name FROM player WHERE player_id=$pid"); }
 
     function zombieTurn($state, $active_player) {
@@ -705,65 +904,41 @@ class herdingcats extends Table
             var tgtZone = (decl==3||decl==4)?1: (decl==5?2:0);
             this._pending.card_id = card_id;
             this._pending.tgtZone = tgtZone;
-            if (tgtZone==0) {
-                this.ajaxcall('/herdingcats/herdingcats/actDeclarePlay.html', {
-                    card_id: card_id, declared_type: decl, target_player_id: 0
-                }, this, function(){}, function(){});
-            } else {
-                this._renderTargetSelection(card_id, decl, tgtZone);
-            }
+            // Always let the server drive the flow
+            this.ajaxcall('/herdingcats/herdingcats/actDeclarePlay.html', {
+                card_id: card_id, declared_type: decl, target_player_id: 0
+            }, this, function(){}, function(){});
         },
 
-        // New explicit target picker in the yellow area
-        _renderTargetSelection: function(card_id, decl, zone){
-            var panel = $('target-area'); dojo.empty(panel);
-            dojo.create('div', { innerHTML: _('Select a player to target:') }, panel);
+        _renderOpponentRows: function(opponents, zone){
+            var frag = document.createDocumentFragment();
             var self=this;
-            for (var pid in this.gamedatas.players) {
-                if (parseInt(pid) == parseInt(this.player_id)) continue;
-                var wrap = dojo.create('div', {'class':'target-row'}, panel);
-                dojo.create('span', {'class':'target-name', innerHTML: this.gamedatas.players[pid].player_name }, wrap);
-                var btn = dojo.create('button', {'class':'bga-btn', innerHTML:_('Target')}, wrap);
-                (function(targetPid){
-                    dojo.connect(btn, 'onclick', function(){
-                        self.ajaxcall('/herdingcats/herdingcats/actDeclarePlay.html', {
-                            card_id: card_id, declared_type: decl, target_player_id: targetPid
-                        }, self, function(){}, function(){});
-                    });
-                })(pid);
-                // Non-interactive preview of the targeted zone
+            Object.keys(opponents).forEach(function(pid){
+                var data = opponents[pid];
+                var row = dojo.create('div', {'class':'target-row'}, frag);
+                dojo.create('span', {'class':'target-name', innerHTML: data.name }, row);
+                var btn = dojo.create('button', {'class':'bga-btn', innerHTML:_('Target')}, row);
+                dojo.connect(btn, 'onclick', function(){
+                    self.ajaxcall('/herdingcats/herdingcats/actSelectTargetPlayer.html', { target_player_id: pid }, self, function(){}, function(){});
+                });
+                var preview = dojo.create('div', {'class':'target-preview'}, row);
                 if (zone==1) {
-                    var count = (self.gamedatas.hand_counts && self.gamedatas.hand_counts[pid]) || 0;
-                    var preview = dojo.create('div', {'class':'target-preview'}, wrap);
-                    for (var i=0;i<count;i++) dojo.create('div', {'class':'card facedown', innerHTML:''}, preview);
+                    for (var i=0;i<(data.handSize||0);i++) dojo.create('div', {'class':'card facedown', innerHTML:''}, preview);
                 } else if (zone==2) {
-                    var herd = self.gamedatas.herds[pid] || [];
-                    var preview = dojo.create('div', {'class':'target-preview'}, wrap);
-                    herd.forEach(function(c){
-                        dojo.create('div', {'class':'card facedown', innerHTML:''}, preview);
-                    });
+                    for (var i=0;i<(data.herdCount||0);i++) dojo.create('div', {'class':'card facedown', innerHTML:''}, preview);
                 }
-            }
-        },
-
-        _showChallengeUI: function(args){
-            var panel = $('challenge-area'); dojo.empty(panel);
-            var msg = _('Challenge the claim or pass.');
-            if (args && args.targetPlayer && args.targetZone) {
-                msg += ' '+_('Target: ')+ args.targetPlayer;
-            }
-            dojo.create('div',{innerHTML:msg}, panel);
-            var self=this;
-            this.addActionButton('btnChallenge', _('Challenge'), function(){
-                self.ajaxcall('/herdingcats/herdingcats/actChallenge.html', {}, self, function(){}, function(){});
             });
-            this.addActionButton('btnPass', _('Pass'), function(){
-                self.ajaxcall('/herdingcats/herdingcats/actPassChallenge.html', {}, self, function(){}, function(){});
-            });
+            return frag;
         },
 
         _showTargetUI: function(args){
             var panel = $('target-area'); dojo.empty(panel);
+            if (!args) return;
+            if (args.targetPlayer == 0) {
+                dojo.create('div',{innerHTML:_('Select a target player:')}, panel);
+                panel.appendChild(this._renderOpponentRows(args.opponents || {}, args.zone));
+                return;
+            }
             if (args.zone == 1) {
                 dojo.create('div',{innerHTML:_('Select a slot in the target hand.')}, panel);
                 for (var i=1;i<=args.handSize;i++) {
@@ -788,6 +963,20 @@ class herdingcats extends Table
                     }
                 });
             }
+        },
+
+        _showChallengeUI: function(args){
+            var panel = $('challenge-area'); dojo.empty(panel);
+            var msg = _('Challenge the claim or pass.');
+            if (args && args.targetPlayer) msg += ' '+_('Target: ')+ args.targetPlayer;
+            dojo.create('div',{innerHTML:msg}, panel);
+            var self=this;
+            this.addActionButton('btnChallenge', _('Challenge'), function(){
+                self.ajaxcall('/herdingcats/herdingcats/actChallenge.html', {}, self, function(){}, function(){});
+            });
+            this.addActionButton('btnPass', _('Pass'), function(){
+                self.ajaxcall('/herdingcats/herdingcats/actPassChallenge.html', {}, self, function(){}, function(){});
+            });
         },
 
         _showInterceptUI: function(args){
@@ -818,15 +1007,12 @@ class herdingcats extends Table
 
         _clearUI: function(){
             ['decl-area','challenge-area','target-area','intercept-area'].forEach(function(id){ var n=$(id); if (n) dojo.empty(n); });
-            for (var pid in this.gamedatas.players) {
-                var board=$('playerboard_'+pid); if (!board) continue;
-                var hdr = board.querySelector('.pb-header .pb-name'); if (hdr) dojo.removeClass(hdr, 'clickable');
-            }
             dojo.query('.card.clickable').removeClass('clickable');
         },
 
         _setupNotifications: function(){
             dojo.subscribe('declarePlay', this, function(notif){});
+            dojo.subscribe('targetChosen', this, function(notif){});
             dojo.subscribe('challengeMade', this, function(notif){});
             dojo.subscribe('revealPlayed', this, function(notif){ this.showMessage(_('Played card was ')+notif.args.printed, 'info'); }.bind(this));
             dojo.subscribe('revealHandCard', this, function(notif){ this.showMessage(_('Revealed ')+notif.args.card, 'info'); }.bind(this));

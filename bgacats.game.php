@@ -183,47 +183,69 @@ class bgacats extends Table
     function actDeclarePlay($card_id, $declared_type, $target_player_id=0) {
         self::checkAction('actDeclarePlay');
         $player_id = self::getActivePlayerId();
+        $card_id = intval($card_id);
+        $declared_type = intval($declared_type);
+        $target_player_id = intval($target_player_id);
 
-        // Validate card is in hand
         $card = $this->cards->getCard($card_id);
         if ($card['location'] != HC_LOC_HAND || intval($card['location_arg']) != $player_id) {
             throw new BgaUserException(self::_("You must select a card from your hand."));
         }
-        // Validate declaration and target
         $tgtZone = HCRules::getTargetZoneForDeclared($declared_type);
-        if ($tgtZone == HC_TGT_NONE) {
-            $target_player_id = 0;
-        } else {
-            if ($target_player_id == 0 || $target_player_id == $player_id) throw new BgaUserException(self::_("Choose an opponent to target."));
-        }
 
-        // Move card to played
+        // Move the card to played immediately
         $this->cards->moveCard($card_id, HC_LOC_PLAYED, $player_id);
 
-        // Persist context
         self::setGameStateValue(GV_ATTACKER, $player_id);
         self::setGameStateValue(GV_PLAYED_CARD_ID, $card_id);
         self::setGameStateValue(GV_DECLARED_TYPE, $declared_type);
-        self::setGameStateValue(GV_TARGET_PLAYER, $target_player_id);
         self::setGameStateValue(GV_TARGET_ZONE, $tgtZone);
         self::setGameStateValue(GV_TARGET_SLOT, 0);
         self::setGameStateValue(GV_SELECTED_HERD_CARD, 0);
         self::setGameStateValue(GV_CHALLENGER_BITS, 0);
         self::setGameStateValue(GV_FIRST_CHAL_NO, 0);
 
-        // Notify
-        self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl}'), array(
+        if ($tgtZone == HC_TGT_NONE) {
+            self::setGameStateValue(GV_TARGET_PLAYER, 0);
+            self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl}'), array(
+                'player_id' => $player_id,
+                'player_name' => $this->getPlayerNameById($player_id),
+                'decl' => HCRules::declaredToText($declared_type),
+                'declared_type' => $declared_type
+            ));
+            // Straight to challenge
+            $this->gamestate->setAllPlayersMultiactive();
+            $this->gamestate->setPlayerNonMultiactive($player_id, 'resolve');
+            $this->gamestate->nextState('goChallenge');
+            return;
+        }
+
+        // Target is required
+        if ($target_player_id == 0 || $target_player_id == $player_id) {
+            // Defer: force "Select target player" BEFORE challenge
+            self::setGameStateValue(GV_TARGET_PLAYER, 0);
+            self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl} (target to be chosen)'), array(
+                'player_id' => $player_id,
+                'player_name' => $this->getPlayerNameById($player_id),
+                'decl' => HCRules::declaredToText($declared_type),
+                'declared_type' => $declared_type
+            ));
+            $this->gamestate->nextState('toSelectTarget');
+            return;
+        }
+
+        // Target provided - proceed to challenge
+        self::setGameStateValue(GV_TARGET_PLAYER, $target_player_id);
+        self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl} (targeting ${target})'), array(
             'player_id' => $player_id,
-            'player_name' => self::getActivePlayerName(),
+            'player_name' => $this->getPlayerNameById($player_id),
             'decl' => HCRules::declaredToText($declared_type),
             'declared_type' => $declared_type,
+            'target' => $this->getPlayerNameById($target_player_id),
             'target_player_id' => $target_player_id,
-            'target_zone' => $tgtZone,
+            'target_zone' => $tgtZone
         ));
-
-        // Multi-active challenge window
         $this->gamestate->setAllPlayersMultiactive();
-        // Remove attacker from multi-active
         $this->gamestate->setPlayerNonMultiactive($player_id, 'resolve');
         $this->gamestate->nextState('goChallenge');
     }
@@ -413,6 +435,24 @@ class bgacats extends Table
         $zone = HCRules::getTargetZoneForDeclared($decl);
         $tpid = self::getGameStateValue(GV_TARGET_PLAYER);
         $res = array('zone'=>$zone, 'targetPlayer'=>$tpid);
+
+        if ($tpid == 0) {
+            // Provide opponents for the picker
+            $players = self::loadPlayersBasicInfos();
+            $pid = self::getActivePlayerId();
+            $others = array();
+            foreach ($players as $opid=>$p) {
+                if (intval($opid) == intval($pid)) continue;
+                $others[$opid] = array(
+                    'name' => $p['player_name'],
+                    'handSize' => count($this->cards->getCardsInLocation(HC_LOC_HAND, $opid)),
+                    'herdCount' => count($this->cards->getCardsInLocation(HC_LOC_HERD, $opid)),
+                );
+            }
+            $res['opponents'] = $others;
+            return $res;
+        }
+
         if ($zone == HC_TGT_HAND) {
             $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $tpid);
             usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
@@ -424,27 +464,48 @@ class bgacats extends Table
         return $res;
     }
 
+    function actSelectTargetPlayer($target_player_id) {
+        self::checkAction('actSelectTargetPlayer');
+        $attacker = self::getActivePlayerId();
+        $target_player_id = intval($target_player_id);
+        if ($target_player_id == 0 || $target_player_id == $attacker) throw new BgaUserException(self::_("Select an opponent."));
+        if (self::getGameStateValue(GV_DECLARED_TYPE) == 0) throw new BgaUserException(self::_("No declaration in progress."));
+
+        self::setGameStateValue(GV_TARGET_PLAYER, $target_player_id);
+        self::notifyAllPlayers('targetChosen', clienttranslate('${player_name} targets ${target}'), array(
+            'player_id'=>$attacker,
+            'player_name'=>$this->getPlayerNameById($attacker),
+            'target'=>$this->getPlayerNameById($target_player_id),
+            'target_player_id'=>$target_player_id
+        ));
+
+        // Open the challenge window
+        $this->gamestate->setAllPlayersMultiactive();
+        $this->gamestate->setPlayerNonMultiactive($attacker, 'resolve');
+        $this->gamestate->nextState('goChallenge');
+    }
+
     function actSelectHandSlot($target_player_id, $slot_index) {
         self::checkAction('actSelectHandSlot');
-        $attacker = self::getActivePlayerId();
+        $slot_index = intval($slot_index);
+        $target_player_id = intval($target_player_id);
         if ($target_player_id != self::getGameStateValue(GV_TARGET_PLAYER)) throw new BgaUserException(self::_("Wrong target."));
         $hand = $this->cards->getCardsInLocation(HC_LOC_HAND, $target_player_id);
         usort($hand, function($a,$b){ return $a['location_arg'] <=> $b['location_arg']; });
         if ($slot_index < 1 || $slot_index > count($hand)) throw new BgaUserException(self::_("Invalid slot."));
         self::setGameStateValue(GV_TARGET_SLOT, $slot_index);
-        // Intercept window for defender
         $this->gamestate->changeActivePlayer($target_player_id);
         $this->gamestate->nextState('toIntercept');
     }
 
     function actSelectHerdCard($target_player_id, $card_id) {
         self::checkAction('actSelectHerdCard');
-        $attacker = self::getActivePlayerId();
+        $target_player_id = intval($target_player_id);
+        $card_id = intval($card_id);
         if ($target_player_id != self::getGameStateValue(GV_TARGET_PLAYER)) throw new BgaUserException(self::_("Wrong target."));
         $card = $this->cards->getCard($card_id);
         if ($card['location'] != HC_LOC_HERD || intval($card['location_arg']) != $target_player_id) throw new BgaUserException(self::_("Select a face-down herd card."));
         self::setGameStateValue(GV_SELECTED_HERD_CARD, $card_id);
-        // Intercept window
         $this->gamestate->changeActivePlayer($target_player_id);
         $this->gamestate->nextState('toIntercept');
     }

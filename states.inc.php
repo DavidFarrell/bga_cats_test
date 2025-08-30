@@ -14,12 +14,15 @@ $machinestates = array(
 
     ST_PLAYER_DECLARE => array(
         'name' => 'playerDeclare',
-        'description' => clienttranslate('${actplayer} - play a card face-down and declare'),
-        'descriptionmyturn' => clienttranslate('Play a card face-down and declare'),
+        'description' => clienttranslate('${actplayer} must play a card and declare'),
+        'descriptionmyturn' => clienttranslate('${you} must play a card and declare'),
         'type' => 'activeplayer',
         'args' => 'argPlayerDeclare',
         'possibleactions' => array('actDeclarePlay'),
-        'transitions' => array( 'goChallenge' => ST_CHALLENGE_WINDOW )
+        'transitions' => array(
+            'toSelectTarget' => ST_SELECT_TARGET,
+            'goChallenge' => ST_CHALLENGE_WINDOW
+        )
     ),
 
     ST_CHALLENGE_WINDOW => array(
@@ -76,14 +79,14 @@ $machinestates = array(
 
     ST_SELECT_TARGET => array(
         'name' => 'selectTarget',
-        'description' => clienttranslate('${actplayer} - select the target slot/card'),
-        'descriptionmyturn' => clienttranslate('Select the target slot/card'),
+        'description' => clienttranslate('${actplayer} must select the target / slot'),
+        'descriptionmyturn' => clienttranslate('${you} must select the target / slot'),
         'type' => 'activeplayer',
         'args' => 'argSelectTarget',
-        'possibleactions' => array('actSelectHandSlot','actSelectHerdCard','actSkipTarget'),
+        'possibleactions' => array('actSelectTargetPlayer', 'actSelectHandSlot', 'actSelectHerdCard'),
         'transitions' => array(
-            'toIntercept' => ST_INTERCEPT_DECISION,
-            'toResolve' => ST_RESOLVE_EFFECT
+            'goChallenge' => ST_CHALLENGE_WINDOW,
+            'toIntercept' => ST_INTERCEPT_DECISION
         )
     ),
 
