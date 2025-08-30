@@ -1,60 +1,16 @@
-# Windows thumbnail cache files
-Thumbs.db
-ehthumbs.db
-ehthumbs_vista.db
+# Environment variables
+.env
 
-# macOS
+# macOS system files
 .DS_Store
-.AppleDouble
-.LSOverride
-
-# Thumbnails
-._*
-
-# Files that might appear in the root of a volume
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-
-# BGA Studio specific
-sftp-config.json
-.vscode/sftp.json
-*.log
 
 # IDE files
 .vscode/
 .idea/
-*.swp
-*.swo
 
 # Temporary files
 *.tmp
-*.bak
-*~
-
-# BGA Workbench (if using)
-.bgawb/
-
-# Environment files (might contain SFTP credentials)
-.env
-.env.local
-.env.production
-.env.development
-.env.test
-*.env
-
-# Mount scripts with credentials
-mount_bga.sh
-unmount_bga.sh
-mount_example_games.sh
-unmount_example_games.sh
-
-# Example games folder (reference only, not our code)
-example_games/
-
-# Local screenshots and captures
-screenshots/
+*.log
+# Utility scripts
+mount_*.sh
+unmount_*.sh
