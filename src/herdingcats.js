@@ -141,16 +141,29 @@ function (dojo, declare) {
             
             // Load current player's hand
             if (gamedatas.hand) {
-                // gamedatas.hand may be an object keyed by string ids or an array; support both
+            // gamedatas.hand may be an object keyed by string ids or an array; support both
                 const list = Array.isArray(gamedatas.hand) ? gamedatas.hand : Object.values(gamedatas.hand);
+                // Add all cards to stock
                 list.forEach(card => {
-                    // Normalize id and type fields coming from PHP
                     const cid = parseInt(card.id ?? card.card_id);
                     const ctype = parseInt(card.type ?? card.card_type);
                     if (!isNaN(cid) && !isNaN(ctype)) {
                         this.playerHand.addToStockWithId(ctype, cid);
                     }
                 });
+                // Reorder hand to match server-provided positions (location_arg) so both players see the same order
+                try {
+                    const weights = {};
+                    for (let i = 0; i < list.length; i++) {
+                        const card = list[i];
+                        const cid = parseInt(card.id ?? card.card_id);
+                        const pos = parseInt(card.location_arg ?? (i + 1));
+                        if (!isNaN(cid) && !isNaN(pos)) weights[cid] = pos;
+                    }
+                    if (this.playerHand.changeItemsWeight) {
+                        this.playerHand.changeItemsWeight(weights);
+                    }
+                } catch (e) { console.warn('hand weight order failed', e); }
             }
         },
 
@@ -756,8 +769,10 @@ function (dojo, declare) {
             host = dojo.create('div', { id, style: 'margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;' }, promptsDiv);
             for (let i = 0; i < count; i++) {
                 const c = dojo.create('div', { className: 'hc_card hc_face_down', style: 'width:48px;height:64px;border-width:1px;cursor:pointer;' }, host);
-                dojo.connect(c, 'onclick', this, ()=> onClick(i));
-                c.title = _('Pick slot ') + i;
+                // Use 1-based slot numbers for clarity and to match server indexing
+                const slotNo = i + 1;
+                dojo.connect(c, 'onclick', this, ()=> onClick(slotNo));
+                c.title = _('Pick slot ') + slotNo;
             }
         },
 

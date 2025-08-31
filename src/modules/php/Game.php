@@ -20,6 +20,8 @@ namespace Bga\Games\HerdingCats;
 
 class Game extends \Bga\GameFramework\Table
 {
+    /** @var mixed Deck component for card management */
+    protected $cards;
     private static array $CARD_TYPES;
     private const G_PENDING_CARD = 'g_pending_card';
     private const G_PENDING_DECL = 'g_pending_decl';
@@ -51,6 +53,17 @@ class Game extends \Bga\GameFramework\Table
             self::G_CHALLENGER => 15,
             self::G_PENALTY_TO_RESOLVE => 16,
         ]);
+
+        // Initialize BGA Deck component (safe even if no real cards are used)
+        try {
+            $this->cards = $this->getNew('module.common.deck');
+            if ($this->cards) {
+                $this->cards->init('card');
+            }
+        } catch (\Throwable $e) {
+            // Leave $cards null; code using it guards with fallbacks
+            $this->cards = null;
+        }
 
         self::$CARD_TYPES = [
             1 => [
@@ -253,8 +266,8 @@ class Game extends \Bga\GameFramework\Table
         $result['handCounts'] = $this->getHandCounts();
         $result['hand_counts'] = $result['handCounts']; // maintain legacy key expected by view
 
-        // Provide a dummy hand for the current player so UI can select a card
-        $result['hand'] = $this->getDummyHandFor($current_player_id);
+        // Provide the current player's hand in the exact order (real or stored dummy)
+        $result['hand'] = $this->getHandList($current_player_id);
 
         // Minimal empty structures for herds/discards expected by client
         $result['herds'] = [];
@@ -302,15 +315,107 @@ class Game extends \Bga\GameFramework\Table
         return $counts;
     }
 
-    private function getDummyHandFor(int $playerId): array
+    /**
+     * Hand order tracking for dummy/no-deck mode: persists per-player hand arrays in UI order.
+     */
+    private function getHandOrders(): array
     {
-        // Provide 7 dummy cards with ids and types for UI selection
+        $orders = $this->globals->get('hand_orders');
+        return is_array($orders) ? $orders : [];
+    }
+
+    private function setHandOrders(array $orders): void
+    {
+        $this->globals->set('hand_orders', $orders);
+    }
+
+    private function getHandList(int $playerId): array
+    {
+        // Prefer real deck when available
+        if (is_object($this->cards)) {
+            $assoc = $this->cards->getCardsInLocation('hand', $playerId);
+            if (!empty($assoc)) {
+                $list = array_values($assoc);
+                usort($list, function ($a, $b) {
+                    $pa = isset($a['location_arg']) ? (int)$a['location_arg'] : 0;
+                    $pb = isset($b['location_arg']) ? (int)$b['location_arg'] : 0;
+                    if ($pa === $pb) {
+                        return ((int)$a['id']) <=> ((int)$b['id']);
+                    }
+                    return $pa <=> $pb;
+                });
+                return $list;
+            }
+        }
+        // Fallback to stored dummy order initialized to current hand count
+        $orders = $this->getHandOrders();
+        if (!isset($orders[$playerId]) || !is_array($orders[$playerId]) || count($orders[$playerId]) === 0) {
+            $counts = $this->getHandCounts();
+            $n = $counts[$playerId] ?? 7;
+            $orders[$playerId] = $this->getDummyHandFor($playerId, $n);
+            $this->setHandOrders($orders);
+        }
+        // Normalize location_arg sequence
+        $list = array_values($orders[$playerId]);
+        $pos = 1;
+        foreach ($list as &$c) { $c['location_arg'] = $pos++; }
+        return $list;
+    }
+
+    private function setHandList(int $playerId, array $list): void
+    {
+        $orders = $this->getHandOrders();
+        $norm = [];
+        $pos = 1;
+        foreach ($list as $c) {
+            $cid = (int)$c['id'];
+            $ctype = isset($c['type']) ? (int)$c['type'] : 0;
+            $norm[(string)$cid] = [ 'id' => $cid, 'type' => $ctype, 'location_arg' => $pos++ ];
+        }
+        $orders[$playerId] = $norm;
+        $this->setHandOrders($orders);
+    }
+
+    /**
+     * Return target player's hand in the exact UI order the owner sees.
+     * - If real cards exist in DB: sort by card_location_arg asc then card_id asc.
+     * - If using placeholder dummy hands: return the dummy list in insertion order.
+     */
+    private function getOrderedHandFor(int $playerId): array
+    {
+        // Try real deck first
+        $assoc = is_object($this->cards) ? $this->cards->getCardsInLocation('hand', $playerId) : [];
+        if (!empty($assoc)) {
+            $list = array_values($assoc);
+            usort($list, function ($a, $b) {
+                $pa = isset($a['location_arg']) ? (int)$a['location_arg'] : 0;
+                $pb = isset($b['location_arg']) ? (int)$b['location_arg'] : 0;
+                if ($pa === $pb) {
+                    return ((int)$a['id']) <=> ((int)$b['id']);
+                }
+                return $pa <=> $pb;
+            });
+            return $list;
+        }
+        // Fallback to dummy hand sized to the tracked count
+        $counts = $this->getHandCounts();
+        $n = $counts[$playerId] ?? 0;
+        return array_values($this->getDummyHandFor($playerId, $n));
+    }
+
+    private function getDummyHandFor(int $playerId, ?int $count = null): array
+    {
+        // Provide N dummy cards with ids and types for UI selection
+        // Use stable default order matching the current UI expectation:
+        // [Kitten, Kitten, Show Cat, Alley Cat, Catnip, Animal Control, Laser Pointer]
         $hand = [];
-        $id = 100;
-        for ($i = 0; $i < 7; $i++) {
-            $cardId = $id + $i;
-            $type = ($i % 6) + 1; // 1..6 rotate
-            $hand[(string)$cardId] = [ 'id' => $cardId, 'type' => $type ];
+        $n = ($count === null) ? 7 : max(0, (int)$count);
+        $base = 100 + ($playerId % 10) * 1000; // reduce cross-player collisions
+        $defaultOrder = [1, 1, 2, 3, 4, 5, 6];
+        for ($i = 0; $i < $n; $i++) {
+            $cardId = $base + $i;
+            $type = $defaultOrder[$i % count($defaultOrder)];
+            $hand[(string)$cardId] = [ 'id' => $cardId, 'type' => $type, 'location_arg' => ($i + 1) ];
         }
         return $hand;
     }
@@ -355,9 +460,10 @@ class Game extends \Bga\GameFramework\Table
     public function argChallengerSelectBluffPenalty(): array
     {
         $actor = (int)$this->getGameStateValue(self::G_ACTOR);
+        $hand = $this->getHandList($actor);
         return [
             'target_player_id' => $actor,
-            'hand_count' => 7,
+            'hand_count' => count($hand),
         ];
     }
 
@@ -377,10 +483,11 @@ class Game extends \Bga\GameFramework\Table
             ];
         }
 
+        $hand = $this->getHandList($challenger);
         $args = [
             // legacy fields some clients expect
             'target_player_id' => $challenger,
-            'hand_count'       => 7,
+            'hand_count'       => count($hand),
 
             // primary fields
             'actor_id'        => $actor,
@@ -392,7 +499,7 @@ class Game extends \Bga\GameFramework\Table
         // Provide a challengers array for UIs that iterate
         $args['challengers'] = [[
             'player_id'  => $challenger,
-            'hand_count' => 7,
+            'hand_count' => count($hand),
         ]];
 
         return $args;
@@ -434,6 +541,17 @@ class Game extends \Bga\GameFramework\Table
             $this->gamestate->nextState('declaredToTarget');
         } else {
             $this->gamestate->nextState('declaredToChallenge');
+        }
+
+        // Maintain dummy hand order store: remove the selected card id from player's list
+        $list = $this->getHandList($player_id);
+        $index = null;
+        foreach ($list as $i => $c) {
+            if ((int)$c['id'] === (int)$card_id) { $index = $i; break; }
+        }
+        if ($index !== null) {
+            array_splice($list, $index, 1);
+            $this->setHandList($player_id, $list);
         }
     }
 
@@ -676,11 +794,25 @@ class Game extends \Bga\GameFramework\Table
     {
         $this->checkAction('actSelectBlindFromChallenger');
         $actor = (int)$this->getActivePlayerId();
-        // Derive a dummy card id/type for the target's hand (ids 100..)
-        $card_id = 100 + max(0, $card_index);
-        $card_type = (($card_id - 100) % 6) + 1;
 
-        // Notify removal from target's hand and add to discard
+        // Determine the ordered hand as seen by the owner
+        $realAssoc = is_object($this->cards) ? $this->cards->getCardsInLocation('hand', $player_id) : [];
+        $hand = $this->getHandList($player_id);
+        $n = count($hand);
+        // Expect 1-based index from client (slot numbers 1..N)
+        if ($card_index < 1 || $card_index > $n) {
+            throw new \BgaUserException(self::_("Invalid slot index."));
+        }
+        $picked = $hand[$card_index - 1];
+        $card_id = (int)$picked['id'];
+        $card_type = isset($picked['type']) ? (int)$picked['type'] : 0;
+
+        // If a real deck exists, move the card to discard; otherwise simulate with notifications
+        if (!empty($realAssoc) && is_object($this->cards)) {
+            $this->cards->moveCard($card_id, 'discard', $player_id);
+        }
+
+        // Notify removal and discard
         $this->notify->all('cardRemoved', '', [
             'player_id' => $player_id,
             'card_id'   => $card_id,
@@ -690,11 +822,19 @@ class Game extends \Bga\GameFramework\Table
             'player_id' => $player_id,
             'card' => [ 'id' => $card_id, 'type' => $card_type ],
         ]);
-        // Hand counts (persisted)
+
+        // Hand counts (persisted placeholder)
         $counts = $this->adjustHandCount($player_id, -1);
         $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
 
-        // Log
+        // Update stored hand order list (dummy mode)
+        if (empty($realAssoc)) {
+            $list = $this->getHandList($player_id);
+            array_splice($list, $card_index - 1, 1);
+            $this->setHandList($player_id, $list);
+        }
+
+        // Log and state progression
         $this->notify->all('truthPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
             'player_id'   => $actor,
             'player_name' => $this->getPlayerNameById($actor),
@@ -702,6 +842,7 @@ class Game extends \Bga\GameFramework\Table
             'target_name' => $this->getPlayerNameById($player_id),
             'card_index'  => $card_index,
         ]);
+
         // Route depending on whether the declared card requires targeting
         $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
         if ((int)$this->getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1) {
@@ -709,12 +850,9 @@ class Game extends \Bga\GameFramework\Table
             $this->gamestate->nextState('toResolve');
             return;
         }
-
         if (!$this->requiresTarget($decl)) {
-            // Non-targeting cards (e.g., Kitten): proceed to resolve/add to herd
             $this->gamestate->nextState('toResolve');
         } else {
-            // Targeted cards: continue to intercept/resolve flow
             $this->gamestate->nextState('penaltyApplied');
         }
     }
@@ -722,12 +860,23 @@ class Game extends \Bga\GameFramework\Table
     public function actSelectBlindFromActor(int $card_index): void
     {
         $this->checkAction('actSelectBlindFromActor');
-        $actor = (int)$this->getActivePlayerId();
+        $picker = (int)$this->getActivePlayerId();
         $fromPlayer = (int)$this->getGameStateValue(self::G_ACTOR);
 
-        // Derive dummy id/type for actor's hand
-        $card_id = 100 + max(0, $card_index);
-        $card_type = (($card_id - 100) % 6) + 1;
+        $realAssoc = is_object($this->cards) ? $this->cards->getCardsInLocation('hand', $fromPlayer) : [];
+        $hand = $this->getHandList($fromPlayer);
+        $n = count($hand);
+        // Expect 1-based index from client (slot numbers 1..N)
+        if ($card_index < 1 || $card_index > $n) {
+            throw new \BgaUserException(self::_("Invalid slot index."));
+        }
+        $picked = $hand[$card_index - 1];
+        $card_id = (int)$picked['id'];
+        $card_type = isset($picked['type']) ? (int)$picked['type'] : 0;
+
+        if (!empty($realAssoc) && is_object($this->cards)) {
+            $this->cards->moveCard($card_id, 'discard', $fromPlayer);
+        }
 
         $this->notify->all('cardRemoved', '', [
             'player_id' => $fromPlayer,
@@ -741,9 +890,16 @@ class Game extends \Bga\GameFramework\Table
         $counts = $this->adjustHandCount($fromPlayer, -1);
         $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
 
+        // Update stored hand order list (dummy mode)
+        if (empty($realAssoc)) {
+            $list = $this->getHandList($fromPlayer);
+            array_splice($list, $card_index - 1, 1);
+            $this->setHandList($fromPlayer, $list);
+        }
+
         $this->notify->all('bluffPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
-            'player_id'   => $actor,
-            'player_name' => $this->getPlayerNameById($actor),
+            'player_id'   => $picker,
+            'player_name' => $this->getPlayerNameById($picker),
             'target_id'   => $fromPlayer,
             'target_name' => $this->getPlayerNameById($fromPlayer),
             'card_index'  => $card_index,
