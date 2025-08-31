@@ -245,7 +245,7 @@ See [`implementation_progress.md`](implementation_progress.md) for detailed chec
 - Col Anderson, Ross Anderson
 
 ### Artwork
-- Kris Tsenova (in theory - Col Anderson atm)
+- Kris Tsenova (in theory - Col Anderson temp art atm)
 - **Card Images:** Located in `/herding_cats_art/`
 
 ### Development

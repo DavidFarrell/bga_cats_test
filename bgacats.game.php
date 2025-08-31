@@ -205,7 +205,9 @@ class bgacats extends Table
         self::setGameStateValue(GV_CHALLENGER_BITS, 0);
         self::setGameStateValue(GV_FIRST_CHAL_NO, 0);
 
+        // Branching logic: decide whether to go straight to challenge or select target first
         if ($tgtZone == HC_TGT_NONE) {
+            // Non-targeting cards (Kitten, Show Cat, Catnip) - go straight to challenge window
             self::setGameStateValue(GV_TARGET_PLAYER, 0);
             self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl}'), array(
                 'player_id' => $player_id,
@@ -213,41 +215,18 @@ class bgacats extends Table
                 'decl' => HCRules::declaredToText($declared_type),
                 'declared_type' => $declared_type
             ));
-            // Straight to challenge
-            $this->gamestate->setAllPlayersMultiactive();
-            $this->gamestate->setPlayerNonMultiactive($player_id, 'resolve');
-            $this->gamestate->nextState('goChallenge');
-            return;
-        }
-
-        // Target is required
-        if ($target_player_id == 0 || $target_player_id == $player_id) {
-            // Defer: force "Select target player" BEFORE challenge
-            self::setGameStateValue(GV_TARGET_PLAYER, 0);
+            $this->gamestate->nextState('declared');  // Go to challengeWindow state
+        } else {
+            // Targeting cards (Alley Cat, Animal Control) - go to target selection first
+            self::setGameStateValue(GV_TARGET_PLAYER, 0);  // Will be set in selectTarget state
             self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl} (target to be chosen)'), array(
                 'player_id' => $player_id,
                 'player_name' => $this->getPlayerNameById($player_id),
                 'decl' => HCRules::declaredToText($declared_type),
                 'declared_type' => $declared_type
             ));
-            $this->gamestate->nextState('toSelectTarget');
-            return;
+            $this->gamestate->nextState('declaredTarget');  // Go to selectTarget state
         }
-
-        // Target provided - proceed to challenge
-        self::setGameStateValue(GV_TARGET_PLAYER, $target_player_id);
-        self::notifyAllPlayers('declarePlay', clienttranslate('${player_name} plays a card face-down and declares ${decl} (targeting ${target})'), array(
-            'player_id' => $player_id,
-            'player_name' => $this->getPlayerNameById($player_id),
-            'decl' => HCRules::declaredToText($declared_type),
-            'declared_type' => $declared_type,
-            'target' => $this->getPlayerNameById($target_player_id),
-            'target_player_id' => $target_player_id,
-            'target_zone' => $tgtZone
-        ));
-        $this->gamestate->setAllPlayersMultiactive();
-        $this->gamestate->setPlayerNonMultiactive($player_id, 'resolve');
-        $this->gamestate->nextState('goChallenge');
     }
 
     function argPlayerDeclare() {

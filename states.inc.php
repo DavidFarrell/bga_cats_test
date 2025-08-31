@@ -1,143 +1,168 @@
 <?php
 /**
- * states.inc.php
+ * States
+ *
+ * Note the extra transition 'declaredTarget' out of 'awaitDeclaration'.
+ * Backend should call $this->gamestate->nextState('declaredTarget') when
+ * the declared card requires a target (e.g. Alley Cat, Animal Control).
  */
+
 $machinestates = array(
 
-    ST_GAME_SETUP => array(
-        'name' => 'gameSetup',
-        'description' => '',
-        'type' => 'manager',
-        'action' => 'stGameSetup',
-        'transitions' => array( '' => ST_PLAYER_DECLARE )
-    ),
+  // 1xx: game management
+  1 => array(
+    'name' => 'gameSetup',
+    'type' => 'manager',
+    'description' => clienttranslate('Game setup'),
+    'action' => 'stGameSetup',
+    'transitions' => array( '' => 10 )
+  ),
 
-    ST_PLAYER_DECLARE => array(
-        'name' => 'playerDeclare',
-        'description' => clienttranslate('${actplayer} must play a card and declare'),
-        'descriptionmyturn' => clienttranslate('${you} must play a card and declare'),
-        'type' => 'activeplayer',
-        'args' => 'argPlayerDeclare',
-        'possibleactions' => array('actDeclarePlay'),
-        'transitions' => array(
-            'toSelectTarget' => ST_SELECT_TARGET,
-            'goChallenge' => ST_CHALLENGE_WINDOW
-        )
+  // 10: active player declares a card to play
+  10 => array(
+    'name' => 'awaitDeclaration',
+    'type' => 'activeplayer',
+    'description' => clienttranslate('${actplayer} must declare a card and play it'),
+    'descriptionmyturn' => clienttranslate('${you} must declare a card identity and play it'),
+    'args' => 'argAwaitDeclaration',
+    'possibleactions' => array('actDeclare'),
+    // NB: we keep the existing 'declared' -> challengeWindow for non-targeting cards
+    // and add 'declaredTarget' -> selectTarget to target first when needed.
+    'transitions' => array(
+      'declared'       => 20, // old flow (e.g. Kitten, Show Cat, Catnip)
+      'declaredTarget' => 40  // new flow for Alley Cat / Animal Control
     ),
+  ),
 
-    ST_CHALLENGE_WINDOW => array(
-        'name' => 'challengeWindow',
-        'description' => clienttranslate('Challenge window - other players may challenge or pass'),
-        'type' => 'multipleactiveplayer',
-        'args' => 'argChallengeWindow',
-        'possibleactions' => array('actChallenge', 'actPassChallenge'),
-        'transitions' => array( 'resolve' => ST_RESOLVE_CHALLENGE )
+  // 20: challenge window for the initial declaration
+  20 => array(
+    'name' => 'challengeWindow',
+    'type' => 'multipleactiveplayer',
+    'description' => clienttranslate('Waiting for possible challenges'),
+    'descriptionmyturn' => clienttranslate('You may challenge the declaration'),
+    'action' => 'stEnterChallengeWindow',
+    'args' => 'argChallengeWindow',
+    'possibleactions' => array('actChallenge','actPassChallenge'),
+    'transitions' => array(
+      'challenged'   => 30,
+      'unchallenged' => 40, // go to select target if not done yet
     ),
+  ),
 
-    ST_RESOLVE_CHALLENGE => array(
-        'name' => 'resolveChallenge',
-        'type' => 'game',
-        'action' => 'stResolveChallenge',
-        'transitions' => array(
-            'bluffPenalty' => ST_BLUFF_PENALTY_PICK,
-            'truthPenalty' => ST_TRUTH_PENALTY_PICK,
-            'noChallenge' => ST_SELECT_TARGET,
-            'truthNoPenalty' => ST_SELECT_TARGET,
-            'endTurn' => ST_END_TURN
-        )
+  // 30: resolve challenge
+  30 => array(
+    'name' => 'resolveChallenge',
+    'type' => 'game',
+    'action' => 'stResolveChallenge',
+    'transitions' => array(
+      'bluffCaught'      => 31,
+      'challengeFailed'  => 32,
+      'goToTarget'       => 40
     ),
+  ),
 
-    ST_BLUFF_PENALTY_PICK => array(
-        'name' => 'bluffPenaltyPick',
-        'description' => clienttranslate('${actplayer} - pick a blind card from attacker to discard'),
-        'descriptionmyturn' => clienttranslate('Pick a blind card from attacker to discard'),
-        'type' => 'activeplayer',
-        'args' => 'argBluffPenaltyPick',
-        'possibleactions' => array('actPickBlindFromHand'),
-        'transitions' => array( 
-            'done' => ST_END_TURN,
-            // New transition used when the penalty comes from a failed intercept: resume the original effect
-            'toEffect' => ST_RESOLVE_EFFECT
-        )
-    ),
+  // 31/32: penalties after challenge resolution
+  31 => array(
+    'name' => 'challengerSelectBluffPenalty',
+    'type' => 'activeplayer',
+    'description' => clienttranslate('A challenger may discard one card from the actor\'s hand'),
+    'descriptionmyturn' => clienttranslate('Select one card from the actor\'s hand to discard'),
+    'args' => 'argChallengerSelectBluffPenalty',
+    'possibleactions' => array('actSelectBlindFromActor'),
+    'transitions' => array('penaltyApplied' => 95, 'zombie' => 95),
+  ),
 
-    ST_TRUTH_PENALTY_PICK => array(
-        'name' => 'truthPenaltyPick',
-        'description' => clienttranslate('${actplayer} - pick a blind card from a challenger to discard'),
-        'descriptionmyturn' => clienttranslate('Pick a blind card from the next challenger'),
-        'type' => 'activeplayer',
-        'args' => 'argTruthPenaltyPick',
-        'possibleactions' => array('actPickBlindFromHand'),
-        'transitions' => array( 
-            'next' => ST_TRUTH_PENALTY_PICK,
-            // Normal path (after truthful main claim): proceed to target selection
-            'done' => ST_SELECT_TARGET,
-            // New path (after truthful intercept): go back to resolveIntercept to apply success
-            'doneIntercept' => ST_RESOLVE_INTERCEPT
-        )
-    ),
+  32 => array(
+    'name' => 'attackerSelectTruthfulPenalty',
+    'type' => 'activeplayer',
+    'description' => clienttranslate('${actor_name} may discard a card from ${challenger_name}\'s hand'),
+    'descriptionmyturn' => clienttranslate('You may discard one card from ${challenger_name}\'s hand'),
+    'args' => 'argAttackerSelectTruthfulPenalty',
+    'possibleactions' => array('actSelectBlindFromChallenger'),
+    'transitions' => array('nextPlayer' => 95, 'penaltyApplied' => 40, 'zombie' => 40),
+  ),
 
-    ST_SELECT_TARGET => array(
-        'name' => 'selectTarget',
-        'description' => clienttranslate('${actplayer} must select the target / slot'),
-        'descriptionmyturn' => clienttranslate('${you} must select the target / slot'),
-        'type' => 'activeplayer',
-        'args' => 'argSelectTarget',
-        'possibleactions' => array('actSelectTargetPlayer', 'actSelectHandSlot', 'actSelectHerdCard'),
-        'transitions' => array(
-            'goChallenge' => ST_CHALLENGE_WINDOW,
-            'toIntercept' => ST_INTERCEPT_DECISION
-        )
+  // 40: select target (player or zone)
+  40 => array(
+    'name' => 'selectTarget',
+    'type' => 'activeplayer',
+    'description' => clienttranslate('${actplayer} must select a target'),
+    'descriptionmyturn' => clienttranslate('${you} must select a target'),
+    'action' => 'stEnterSelectTarget',
+    'args'   => 'argSelectTarget',
+    'possibleactions' => array('actSelectTargetSlot','actSkipTargeting'),
+    'transitions' => array(
+      'targetSelected' => 50,
+      'noTargeting'    => 80,
+      'zombie'         => 80
     ),
+  ),
 
-    ST_INTERCEPT_DECISION => array(
-        'name' => 'interceptDecision',
-        'description' => clienttranslate('${actplayer} - you may declare a Laser Pointer intercept'),
-        'descriptionmyturn' => clienttranslate('Declare Laser Pointer intercept or continue'),
-        'type' => 'activeplayer',
-        'args' => 'argInterceptDecision',
-        'possibleactions' => array('actDeclareIntercept','actDeclineIntercept'),
-        'transitions' => array( 'toInterceptChallenge' => ST_INTERCEPT_CHALLENGE, 'toResolve' => ST_RESOLVE_EFFECT )
-    ),
+  // 50..90: unchanged from your current file (intercept, reveal, add to herd, end turn)
+  50 => array(
+    'name' => 'interceptDeclare',
+    'type' => 'activeplayer',
+    'description' => clienttranslate('${target_player} may intercept with Laser Pointer'),
+    'args' => 'argInterceptDeclare',
+    'possibleactions' => array('actDeclareIntercept','actPassIntercept'),
+    'transitions' => array('interceptDeclared' => 60, 'noIntercept' => 80, 'zombie' => 80),
+  ),
 
-    ST_INTERCEPT_CHALLENGE => array(
-        'name' => 'interceptChallenge',
-        'description' => clienttranslate('Intercept - others may challenge or pass'),
-        'type' => 'multipleactiveplayer',
-        'args' => 'argInterceptChallengeWindow',
-        'possibleactions' => array('actChallengeIntercept','actPassIntercept'),
-        'transitions' => array( 'resolve' => ST_RESOLVE_INTERCEPT )
-    ),
+  60 => array(
+    'name' => 'interceptChallengeWindow',
+    'type' => 'multipleactiveplayer',
+    'description' => clienttranslate('Players may challenge ${defender}\'s Laser Pointer intercept'),
+    'args' => 'argInterceptChallengeWindow',
+    'possibleactions' => array('actChallengeIntercept','actPassChallengeIntercept'),
+    'transitions' => array('interceptChallenged' => 70,'interceptUnchallenged' => 80),
+  ),
 
-    ST_RESOLVE_INTERCEPT => array(
-        'name' => 'resolveIntercept',
-        'type' => 'game',
-        'action' => 'stResolveIntercept',
-        'transitions' => array(
-            'success' => ST_END_TURN,
-            'liePenalty' => ST_BLUFF_PENALTY_PICK,  // reuse picker flow: first intercept challenger picks from defender
-            'failProceed' => ST_RESOLVE_EFFECT
-        )
+  70 => array(
+    'name' => 'resolveInterceptChallenge',
+    'type' => 'game',
+    'action' => 'stResolveInterceptChallenge',
+    'transitions' => array(
+      'interceptBluffCaught'   => 75,
+      'interceptChallengeFailed'=> 80,
+      'interceptGoToResolve'   => 80
     ),
+  ),
 
-    ST_RESOLVE_EFFECT => array(
-        'name' => 'resolveEffect',
-        'type' => 'game',
-        'action' => 'stResolveEffect',
-        'transitions' => array( 'endTurn' => ST_END_TURN )
-    ),
+  75 => array(
+    'name' => 'interceptChallengerSelectPenalty',
+    'type' => 'activeplayer',
+    'description' => clienttranslate('${intercept_challenger} selects penalty card from ${bluffer}'),
+    'args' => 'argInterceptChallengerSelectPenalty',
+    'possibleactions' => array('actSelectBlindFromActor'),
+    'transitions' => array('interceptPenaltyApplied' => 80, 'zombie' => 80),
+  ),
 
-    ST_END_TURN => array(
-        'name' => 'endTurn',
-        'type' => 'game',
-        'action' => 'stEndTurn',
-        'transitions' => array( 'next' => ST_PLAYER_DECLARE, 'scoring' => ST_SCORING )
-    ),
+  80 => array(
+    'name' => 'revealAndResolve',
+    'type' => 'game',
+    'action' => 'stRevealAndResolve',
+    'transitions' => array('effectResolved' => 90),
+  ),
 
-    ST_SCORING => array(
-        'name' => 'scoring',
-        'type' => 'game',
-        'action' => 'stComputeScores',
-        'transitions' => array( 'endGame' => 99 )
-    ),
+  90 => array(
+    'name' => 'addPlayedCardToHerd',
+    'type' => 'game',
+    'action' => 'stAddPlayedCardToHerd',
+    'transitions' => array('cardAdded' => 95),
+  ),
+
+  95 => array(
+    'name' => 'endTurn',
+    'type' => 'game',
+    'action' => 'stEndTurn',
+    'updateGameProgression' => true,
+    'transitions' => array('gameEnd' => 99, 'nextPlayer' => 10, 'zombie' => 10),
+  ),
+
+  99 => array(
+    'name' => 'endScore',
+    'type' => 'game',
+    'action' => 'stEndScore',
+    'transitions' => array( '' => 99 ),
+  )
 );

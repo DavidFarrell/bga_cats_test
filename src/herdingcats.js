@@ -45,7 +45,7 @@ function (dojo, declare) {
             this.targetSelectionActive = false;
             
             // Card type names for UI
-            this.cardTypeNames = {
+            this.cardTypeNames = { 
                 1: _('Kitten'),
                 2: _('Show Cat'),
                 3: _('Alley Cat'),

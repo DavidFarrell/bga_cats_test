@@ -61,19 +61,46 @@ perform_sync() {
 # Perform initial sync
 perform_sync
 
-# If watch mode, start watching
+# If watch mode, start watching with multiple methods
 if [ "$WATCH_MODE" == "true" ]; then
     echo ""
-    echo "🔄 Watching for changes..."
-    fswatch -o src/ | while read f; do
+    echo "🔄 Watching for changes with multiple methods..."
+    
+    # Use both fswatch and inotifywait for better coverage
+    if command -v inotifywait &> /dev/null; then
+        echo "📡 Using inotifywait as backup watcher..."
+        # Linux-style watching as backup
+        (inotifywait -m -r -e modify,create,delete src/ 2>/dev/null | while read path action file; do
+            echo ""
+            echo "📝 Change detected via inotify: $action $file"
+            sleep 0.3
+            perform_sync
+        done) &
+        INOTIFY_PID=$!
+    fi
+    
+    # Main fswatch with debouncing
+    echo "👁️  Using fswatch as primary watcher..."
+    fswatch -o -r src/ | while read f; do
         echo ""
-        echo "📝 Change detected..."
+        echo "📝 Change detected via fswatch..."
+        
+        # Debounce rapid changes
+        sleep 0.5
+        
         perform_sync
     done
+    
+    # Clean up background processes if we exit
+    if [ ! -z "$INOTIFY_PID" ]; then
+        kill $INOTIFY_PID 2>/dev/null
+    fi
 else
     if [ "$1" == "--watch" ]; then
         echo ""
         echo "ℹ️  To enable auto-deploy, install fswatch:"
         echo "    brew install fswatch"
+        echo "    For even better coverage, also install inotifywait:"
+        echo "    brew install inotify-tools"
     fi
 fi

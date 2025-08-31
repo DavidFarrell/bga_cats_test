@@ -1,299 +1,178 @@
-define([
-    "dojo","dojo/_base/declare",
-    "ebg/core/gamegui"
-],
-function (dojo, declare) {
-    return declare("bgagame.bgacats", ebg.core.gamegui, {
-        constructor: function(){
-            this.hand = [];
-            this.gamedatas = null;
-            this._pending = {};
-        },
+define(["dojo","dojo/_base/declare","ebg/core/gamegui","ebg/stock"], function (dojo, declare) {
+  return declare("bgagame.bgacats", ebg.core.gamegui, {
 
-        setup: function( gamedatas ) {
-            this.gamedatas = gamedatas;
-            this.player_id = this.player_id || this.getCurrentPlayerId();
+    constructor: function () {
+      this.gamedatas = null;
 
-            // Build hand
-            this._renderHand(gamedatas.hand);
+      // Card constants (client side mirror)
+      this.C = { KITTEN:1, SHOWCAT:2, ALLEYCAT:3, CATNIP:4, ANIMALCONTROL:5, LASERPOINTER:6 };
+    },
 
-            // Build players
-            for (var pid in gamedatas.players) {
-                this._renderZone('herd_'+pid, gamedatas.herds[pid], false);
-                this._renderZone('herdup_'+pid, gamedatas.herd_up[pid], true);
-                this._renderZone('discard_'+pid, gamedatas.discards[pid], true, true);
-            }
+    // -----------------------------------------------------------------------
+    // Setup
+    // -----------------------------------------------------------------------
+    setup: function (gamedatas) {
+      this.gamedatas = gamedatas;
+      // The HTML template already draws the zones; we only drive prompts and clicks.
+      // Nothing else is required here for target selection.
+    },
 
-            // Connect notifs
-            this._setupNotifications();
-        },
+    // -----------------------------------------------------------------------
+    // State hooks
+    // -----------------------------------------------------------------------
+    onEnteringState: function (stateName, args) {
+      const a = (args && args.args) ? args.args : (args || {}); // <-- normalise BGA args
 
-        onEnteringState: function(stateName, args) {
-            if (stateName == 'playerDeclare' && this.isCurrentPlayerActive()) {
-                this._showDeclareUI();
-            }
-            if (stateName == 'challengeWindow') {
-                this._showChallengeUI();
-            }
-            if (stateName == 'interceptChallenge') {
-                this._showInterceptChallengeUI();
-            }
-            if (stateName == 'selectTarget' && this.isCurrentPlayerActive()) {
-                this.enterSelectTarget(args.args);
-            }
-            if (stateName == 'interceptDecision' && this.isCurrentPlayerActive()) {
-                this._showInterceptUI(args.args);
-            }
-            if (stateName == 'bluffPenaltyPick' && this.isCurrentPlayerActive()) {
-                this._showBlindPickUI(args.args);
-            }
-            if (stateName == 'truthPenaltyPick' && this.isCurrentPlayerActive()) {
-                this._showBlindPickUI(args.args);
-            }
-        },
+      switch (stateName) {
+        case "challengeWindow":
+          this._updateActionPrompts("challengeWindow", a);
+          break;
 
-        onLeavingState: function(stateName) {
-            if (stateName == 'selectTarget') {
-                var actionArea = $('target-area');
-                if (actionArea) dojo.empty(actionArea);
-            }
-            this._clearUI();
-        },
+        case "selectTarget": {
+          // Always refresh the prompt panel so spectators also see who/what is being picked
+          this._updateActionPrompts("selectTarget", a);
 
-        onUpdateActionButtons: function(stateName, args) {
-            // No global buttons needed; UI panels render dedicated controls
-        },
+          // Only the active player gets clickable buttons
+          if (this.isCurrentPlayerActive()) {
+            this._showTargetSelection(a); // <-- a contains valid_targets
+          }
+          break;
+        }
 
-        _renderHand: function(cards) {
-            var node = $('hand-area');
-            dojo.empty(node);
-            cards.sort(function(a,b){ return a.location_arg - b.location_arg; });
-            this.hand = cards;
-            for (var i=0;i<cards.length;i++) {
-                var c = cards[i];
-                var div = dojo.create('div', { id:'hand_'+c.id, 'class':'card facedown', innerHTML:'Hand' }, node);
-                dojo.addClass(div, 'clickable');
-                // Capture card id correctly to avoid binding the last value
-                (function(self, cid){
-                    dojo.connect(div, 'onclick', function(){ self._onClickHandCard(cid); });
-                })(this, c.id);
-            }
-        },
+        case "interceptDeclare":
+          this._updateActionPrompts("interceptDeclare", a);
+          break;
 
-        _renderZone: function(zoneId, cards, faceup, discard){
-            var node = $(zoneId);
-            if (!node) return;
-            dojo.empty(node);
-            for (var i=0;i<cards.length;i++) {
-                var c = cards[i];
-                var div = dojo.create('div', { id:zoneId+'_card_'+c.id, 'class':'card '+(faceup?'faceup':'facedown')+(discard?' discard':'') }, node);
-                div.innerHTML = faceup ? this._typeToText(c.type_arg>0?c.type_arg:c.type) : '';
-            }
-        },
+        case "interceptChallengeWindow":
+          this._updateActionPrompts("interceptChallengeWindow", a);
+          break;
+      }
+    },
 
-        _typeToText: function(type){
-            var map = {1:'Kitten',2:'Show Cat',3:'Alley Cat',4:'Catnip',5:'Animal Control',6:'Laser Pointer'};
-            return map[type] || '?';
-        },
+    onLeavingState: function (stateName) {
+      if (stateName === "selectTarget") {
+        this._clearTargetSelection();
+      }
+    },
 
-        _showDeclareUI: function(){
-            var panel = $('decl-area'); dojo.empty(panel);
-            dojo.create('div', { innerHTML: _('Choose a hand card, pick a declaration and (if needed) a target player.') }, panel);
-            var decls = [
-                {t:1,n:_('Kitten')},{t:2,n:_('Show Cat')},{t:3,n:_('Alley Cat')},
-                {t:4,n:_('Catnip')},{t:5,n:_('Animal Control')},{t:6,n:_('Laser Pointer')}
-            ];
-            var self=this;
-            decls.forEach(function(d){
-                var btn = dojo.create('button', { 'class':'bga-btn', innerHTML:d.n }, panel);
-                dojo.connect(btn, 'onclick', function(){
-                    self._pending.decl = d.t;
-                    self.showMessage(_('Click a hand card to play and declare ')+d.n, 'info');
-                });
-            });
-            // Target player selection is prompted after clicking "Declare" with a targeted type
-        },
+    // We keep the top-bar buttons lean. The yellow box shows the important choices.
+    onUpdateActionButtons: function (stateName, args) {
+      const a = (args && args.args) ? args.args : (args || {});
+      if (!this.isCurrentPlayerActive()) return;
 
-        _onClickHandCard: function(card_id){
-            if (!this._pending.decl) { this.showMessage(_('Choose a declaration first'), 'error'); return; }
-            var decl = this._pending.decl;
-            var tgtZone = (decl==3||decl==4)?1: (decl==5?2:0);
-            this._pending.card_id = card_id;
-            this._pending.tgtZone = tgtZone;
-            // Always let the server drive the flow
-            this.ajaxcall('/bgacats/bgacats/actDeclarePlay.html', {
-                card_id: card_id, declared_type: decl, target_player_id: 0
-            }, this, function(){}, function(){});
-        },
+      if (stateName === "selectTarget" && a && a.canSkip) {
+        this.addActionButton("hc_btn_skip_target", _("Pass"), () => this._onSkipTargeting(), null, false, "gray");
+      }
+    },
 
-        _renderOpponentRows: function(opponents, zone){
-            var frag = document.createDocumentFragment();
-            var self=this;
-            Object.keys(opponents).forEach(function(pid){
-                var data = opponents[pid];
-                var row = dojo.create('div', {'class':'target-row'}, frag);
-                dojo.create('span', {'class':'target-name', innerHTML: data.name }, row);
-                var btn = dojo.create('button', {'class':'bga-btn', innerHTML:_('Target')}, row);
-                dojo.connect(btn, 'onclick', function(){
-                    self.ajaxcall('/bgacats/bgacats/actSelectTargetPlayer.html', { target_player_id: pid }, self, function(){}, function(){});
-                });
-                var preview = dojo.create('div', {'class':'target-preview'}, row);
-                if (zone==1) {
-                    for (var i=0;i<(data.handSize||0);i++) dojo.create('div', {'class':'card facedown', innerHTML:''}, preview);
-                } else if (zone==2) {
-                    for (var i=0;i<(data.herdCount||0);i++) dojo.create('div', {'class':'card facedown', innerHTML:''}, preview);
-                }
-            });
-            return frag;
-        },
+    // -----------------------------------------------------------------------
+    // Prompts
+    // -----------------------------------------------------------------------
+    _updateActionPrompts: function (phase, data) {
+      const wrap = dojo.byId("hc_action_prompts");
+      if (!wrap) return;
+      wrap.innerHTML = "";
 
-        _showChallengeUI: function(){
-            var panel = $('challenge-area'); dojo.empty(panel);
-            dojo.create('div',{innerHTML:_('Challenge the claim or pass.')}, panel);
-            var self=this;
-            this.addActionButton('btnChallenge', _('Challenge'), function(){
-                self.ajaxcall('/bgacats/bgacats/actChallenge.html', {}, self, function(){}, function(){});
-            });
-            this.addActionButton('btnPass', _('Pass'), function(){
-                self.ajaxcall('/bgacats/bgacats/actPassChallenge.html', {}, self, function(){}, function(){});
-            });
-        },
+      // If the server included the declared type, show a small header so everyone
+      // sees what is currently being resolved.
+      if (data && data.declared_card) {
+        const d = dojo.create("div", { className: "hc_declared_preview" }, wrap);
+        dojo.create("div", { innerHTML: _("Declared as: ") + this._typeName(data.declared_card), className: "hc_declared_title" }, d);
+      }
 
-        _showInterceptChallengeUI: function(){
-            var panel = $('challenge-area'); dojo.empty(panel);
-            dojo.create('div',{innerHTML:_('Challenge the intercept or pass.')}, panel);
-            var self=this;
-            this.addActionButton('btnChallengeIntercept', _('Challenge'), function(){
-                self.ajaxcall('/bgacats/bgacats/actChallengeIntercept.html', {}, self, function(){}, function(){});
-            });
-            this.addActionButton('btnPassIntercept', _('Pass'), function(){
-                self.ajaxcall('/bgacats/bgacats/actPassIntercept.html', {}, self, function(){}, function(){});
-            });
-        },
+      if (phase === "selectTarget") {
+        dojo.create("h3", { innerHTML: _("Choose player to target") }, wrap);
+      } else if (phase === "challengeWindow") {
+        dojo.create("div", { innerHTML: _("Waiting for possible challenges...") }, wrap);
+      } else if (phase === "interceptDeclare") {
+        dojo.create("div", { innerHTML: _("The defender may declare a Laser Pointer.") }, wrap);
+      } else if (phase === "interceptChallengeWindow") {
+        dojo.create("div", { innerHTML: _("Players may challenge the intercept.") }, wrap);
+      }
+    },
 
-        enterSelectTarget: function(args) {
-            // Use the yellow action area (target-area) for target selection
-            var panel = $('target-area');
-            if (!panel) return;
-            dojo.empty(panel);
-            
-            // Handle target player selection when no target is set
-            if (!args || args.targetPlayer == 0) {
-                dojo.create('div', {innerHTML: _('Select a target player:'), 'class': 'action-prompt'}, panel);
-                
-                if (args && args.opponents) {
-                    var self = this;
-                    Object.keys(args.opponents).forEach(function(pid) {
-                        var data = args.opponents[pid];
-                        var row = dojo.create('div', {'class':'target-row'}, panel);
-                        dojo.create('span', {'class':'target-name', innerHTML: data.name }, row);
-                        var btn = dojo.create('button', {'class':'bgabutton bgabutton_blue', innerHTML:_('Target')}, row);
-                        
-                        // Add preview based on zone
-                        var preview = dojo.create('div', {'class':'target-preview'}, row);
-                        if (args.zone == 1) {
-                            for (var i=0; i<(data.handSize||0); i++) {
-                                dojo.create('div', {'class':'card facedown mini', innerHTML:''}, preview);
-                            }
-                        } else if (args.zone == 2) {
-                            for (var i=0; i<(data.herdCount||0); i++) {
-                                dojo.create('div', {'class':'card facedown mini', innerHTML:''}, preview);
-                            }
-                        }
-                        
-                        dojo.connect(btn, 'onclick', function() {
-                            btn.disabled = true; // Prevent double clicks
-                            self.ajaxcall('/bgacats/bgacats/actSelectTargetPlayer.html', 
-                                { target_player_id: pid }, 
-                                self, 
-                                function(){}, 
-                                function(err){ btn.disabled = false; }
-                            );
-                        });
-                    });
-                }
-                return;
-            }
-            
-            // If target is already selected, handle slot/card selection
-            this._showTargetUI(args);
-        },
-        
-        _showTargetUI: function(args){
-            var panel = $('target-area'); dojo.empty(panel);
-            if (!args) return;
-            if (args.targetPlayer == 0) {
-                dojo.create('div',{innerHTML:_('Select a target player:')}, panel);
-                panel.appendChild(this._renderOpponentRows(args.opponents || {}, args.zone));
-                return;
-            }
-            if (args.zone == 1) {
-                dojo.create('div',{innerHTML:_('Select a slot in the target hand.')}, panel);
-                for (var i=1;i<=args.handSize;i++) {
-                    (function(idx){
-                        var btn = dojo.create('button', {'class':'bga-btn', innerHTML:_('Slot ')+idx}, panel);
-                        dojo.connect(btn, 'onclick', function(){ 
-                            this.ajaxcall('/bgacats/bgacats/actSelectHandSlot.html', { target_player_id: args.targetPlayer, slot_index: idx }, this, function(){}, function(){});
-                        }.bind(this));
-                    }).call(this,i);
-                }
-            } else if (args.zone == 2) {
-                dojo.create('div',{innerHTML:_('Select a face-down herd card.')}, panel);
-                var ids = args.herdCards || [];
-                var self=this;
-                ids.forEach(function(cid){
-                    var el = $('herd_'+args.targetPlayer+'_card_'+cid);
-                    if (el) {
-                        dojo.addClass(el, 'clickable');
-                        dojo.connect(el, 'onclick', function(){
-                            self.ajaxcall('/bgacats/bgacats/actSelectHerdCard.html', { target_player_id: args.targetPlayer, card_id: cid }, self, function(){}, function(){});
-                        });
-                    }
-                });
-            }
-        },
+    // -----------------------------------------------------------------------
+    // Target selection UI - built directly in the yellow prompt area
+    // -----------------------------------------------------------------------
+    _showTargetSelection: function (args) {
+      const host = dojo.byId("hc_action_prompts");
+      if (!host) return;
 
-        _showInterceptUI: function(args){
-            var panel = $('intercept-area'); dojo.empty(panel);
-            dojo.create('div',{innerHTML:_('Declare Laser Pointer intercept?')}, panel);
-            var self=this;
-            this.addActionButton('btnNoIntercept', _('No'), function(){
-                self.ajaxcall('/bgacats/bgacats/actDeclineIntercept.html', {}, self, function(){}, function(){});
-            });
-            this.addActionButton('btnYesIntercept', _('Yes'), function(){
-                self.ajaxcall('/bgacats/bgacats/actDeclareIntercept.html', { zone: args.allowedZone }, self, function(){}, function(){});
-            });
-        },
+      // Container so we can clear it on leaving state
+      const boxId = "hc_target_inline";
+      let box = dojo.byId(boxId);
+      if (box) box.parentNode.removeChild(box);
+      box = dojo.create("div", { id: boxId, className: "hc_target_inline" }, host);
 
-        _showBlindPickUI: function(args){
-            var panel = $('target-area'); dojo.empty(panel);
-            dojo.create('div',{innerHTML:_('Pick a blind slot from the target hand.')}, panel);
-            var n = args.handSize || 0;
-            for (var i=1;i<=n;i++) {
-                (function(idx){
-                    var btn = dojo.create('button', {'class':'bga-btn', innerHTML:_('Slot ')+idx}, panel);
-                    dojo.connect(btn, 'onclick', function(){ 
-                        this.ajaxcall('/bgacats/bgacats/actPickBlindFromHand.html', { target_player_id: args.targetPlayer, slot_index: idx }, this, function(){}, function(){});
-                    }.bind(this));
-                }).call(this,i);
-            }
-        },
+      const targets = (args && args.valid_targets) ? args.valid_targets : [];
+      if (!targets.length) {
+        dojo.create("div", { className: "hc_no_targets", innerHTML: _("No valid targets. If the card does not require a target, press Pass.") }, box);
+      } else {
+        const row = dojo.create("div", { className: "hc_target_row" }, box);
+        targets.forEach(t => {
+          const b = dojo.create("a", {
+            href: "#",
+            className: "bgabutton bgabutton_blue hc_target_choice",
+            innerHTML: t.name
+          }, row);
+          dojo.connect(b, "onclick", this, function (e) {
+            dojo.stopEvent(e);
+            this._onSelectTarget(parseInt(t.id), t.zone);
+          });
+        });
+      }
 
-        _clearUI: function(){
-            ['decl-area','challenge-area','target-area','intercept-area'].forEach(function(id){ var n=$(id); if (n) dojo.empty(n); });
-            dojo.query('.card.clickable').removeClass('clickable');
-        },
+      if (args && args.canSkip) {
+        const pass = dojo.create("a", { href: "#", className: "bgabutton bgabutton_gray", innerHTML: _("Pass") }, box);
+        dojo.connect(pass, "onclick", this, function (e) {
+          dojo.stopEvent(e);
+          this._onSkipTargeting();
+        });
+      }
+    },
 
-        // Notifications
-        _setupNotifications: function(){
-            dojo.subscribe('declarePlay', this, function(notif){});
-            dojo.subscribe('targetChosen', this, function(notif){});
-            dojo.subscribe('challengeMade', this, function(notif){});
-            dojo.subscribe('revealPlayed', this, function(notif){ this.showMessage(_('Played card was ')+notif.args.printed, 'info'); }.bind(this));
-            dojo.subscribe('revealHandCard', this, function(notif){ this.showMessage(_('Revealed ')+notif.args.card, 'info'); }.bind(this));
-            dojo.subscribe('revealHerdCard', this, function(notif){ this.showMessage(_('Revealed ')+notif.args.card, 'info'); }.bind(this));
-            dojo.subscribe('addToHerd', this, function(notif){ this.showMessage(_('A card was added to herd as ')+notif.args.decl, 'info'); }.bind(this));
-            dojo.subscribe('scorePlayer', this, function(notif){ this.showMessage(_(notif.args.player_name+' scores '+notif.args.score), 'info'); }.bind(this));
-        },
-    });
+    _clearTargetSelection: function () {
+      const el = dojo.byId("hc_target_inline");
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    },
+
+    // -----------------------------------------------------------------------
+    // Ajax actions
+    // -----------------------------------------------------------------------
+    _onSelectTarget: function (targetPlayerId, zone) {
+      // Server handler expects the chosen player id in slot_index (historic naming) and the zone.
+      this.ajaxcall(
+        "/bgacats/bgacats/actSelectTargetSlot.html",
+        { lock: true, slot_index: targetPlayerId, zone: zone },
+        this,
+        () => {},
+        () => {}
+      );
+    },
+
+    _onSkipTargeting: function () {
+      this.ajaxcall(
+        "/bgacats/bgacats/actSkipTargeting.html",
+        { lock: true },
+        this,
+        () => {},
+        () => {}
+      );
+    },
+
+    // -----------------------------------------------------------------------
+    // Small helpers
+    // -----------------------------------------------------------------------
+    _typeName: function (t) {
+      switch (parseInt(t, 10)) {
+        case this.C.KITTEN:        return _("Kitten");
+        case this.C.SHOWCAT:       return _("Show Cat");
+        case this.C.ALLEYCAT:      return _("Alley Cat");
+        case this.C.CATNIP:        return _("Catnip");
+        case this.C.ANIMALCONTROL: return _("Animal Control");
+        case this.C.LASERPOINTER:  return _("Laser Pointer");
+      }
+      return "";
+    },
+  });
 });

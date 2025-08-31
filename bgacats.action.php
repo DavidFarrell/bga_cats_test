@@ -48,6 +48,14 @@ class action_bgacats extends APP_GameAction
         self::ajaxResponse();
     }
     
+    public function actSelectTargetPlayer()
+    {
+        self::setAjaxMode();
+        $target_player_id = self::getArg("target_player_id", AT_posint, true);
+        $this->game->actSelectTargetPlayer($target_player_id);
+        self::ajaxResponse();
+    }
+    
     public function actSelectHandSlot()
     {
         self::setAjaxMode();
