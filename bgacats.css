@@ -11,3 +11,54 @@
 .pb-herd, .pb-herdup, .pb-discard { min-height: 90px; border: 1px dashed #bbb; flex: 1; padding: 4px; }
 #action-panel { margin-top: 8px; }
 button.bga-btn { margin: 2px; }
+
+/* Target selection UI */
+.target-row {
+    margin: 5px 0;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.target-name {
+    font-weight: bold;
+    min-width: 100px;
+}
+
+.target-preview {
+    display: flex;
+    gap: 2px;
+}
+
+.target-preview .card.mini {
+    width: 20px;
+    height: 28px;
+    font-size: 8px;
+}
+
+.action-prompt {
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.bgabutton_blue {
+    background: #4A90E2;
+    color: white;
+    padding: 5px 15px;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+}
+
+.bgabutton_blue:hover {
+    background: #357ABD;
+}
+
+.bgabutton_blue:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}

@@ -39,7 +39,7 @@ function (dojo, declare) {
                 this._showInterceptChallengeUI();
             }
             if (stateName == 'selectTarget' && this.isCurrentPlayerActive()) {
-                this._showTargetUI(args.args);
+                this.enterSelectTarget(args.args);
             }
             if (stateName == 'interceptDecision' && this.isCurrentPlayerActive()) {
                 this._showInterceptUI(args.args);
@@ -53,6 +53,10 @@ function (dojo, declare) {
         },
 
         onLeavingState: function(stateName) {
+            if (stateName == 'selectTarget') {
+                var actionArea = $('target-area');
+                if (actionArea) dojo.empty(actionArea);
+            }
             this._clearUI();
         },
 
@@ -167,6 +171,54 @@ function (dojo, declare) {
             });
         },
 
+        enterSelectTarget: function(args) {
+            // Use the yellow action area (target-area) for target selection
+            var panel = $('target-area');
+            if (!panel) return;
+            dojo.empty(panel);
+            
+            // Handle target player selection when no target is set
+            if (!args || args.targetPlayer == 0) {
+                dojo.create('div', {innerHTML: _('Select a target player:'), 'class': 'action-prompt'}, panel);
+                
+                if (args && args.opponents) {
+                    var self = this;
+                    Object.keys(args.opponents).forEach(function(pid) {
+                        var data = args.opponents[pid];
+                        var row = dojo.create('div', {'class':'target-row'}, panel);
+                        dojo.create('span', {'class':'target-name', innerHTML: data.name }, row);
+                        var btn = dojo.create('button', {'class':'bgabutton bgabutton_blue', innerHTML:_('Target')}, row);
+                        
+                        // Add preview based on zone
+                        var preview = dojo.create('div', {'class':'target-preview'}, row);
+                        if (args.zone == 1) {
+                            for (var i=0; i<(data.handSize||0); i++) {
+                                dojo.create('div', {'class':'card facedown mini', innerHTML:''}, preview);
+                            }
+                        } else if (args.zone == 2) {
+                            for (var i=0; i<(data.herdCount||0); i++) {
+                                dojo.create('div', {'class':'card facedown mini', innerHTML:''}, preview);
+                            }
+                        }
+                        
+                        dojo.connect(btn, 'onclick', function() {
+                            btn.disabled = true; // Prevent double clicks
+                            self.ajaxcall('/bgacats/bgacats/actSelectTargetPlayer.html', 
+                                { target_player_id: pid }, 
+                                self, 
+                                function(){}, 
+                                function(err){ btn.disabled = false; }
+                            );
+                        });
+                    });
+                }
+                return;
+            }
+            
+            // If target is already selected, handle slot/card selection
+            this._showTargetUI(args);
+        },
+        
         _showTargetUI: function(args){
             var panel = $('target-area'); dojo.empty(panel);
             if (!args) return;
