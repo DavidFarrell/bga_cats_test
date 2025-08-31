@@ -34,7 +34,7 @@ class bgacats extends Table
     }
 
     protected function getGameName() {
-        return 'bgacats';
+        return 'herdingcats';
     }
 
     // Utility getters

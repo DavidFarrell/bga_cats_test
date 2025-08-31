@@ -49,8 +49,11 @@ $machinestates = [
              'actDeclare'
          ])
          ->transitions([
-             'declared' => 20,  // Go to challenge window instead of endTurn
-         ])        ->build(),
+             // Branch: targeted cards go to target selection first; others go to challenge
+             'declaredToTarget' => 40,
+             'declaredToChallenge' => 20,
+         ])
+        ->build(),
 
     // ========== CHALLENGE SYSTEM ========== 
 
@@ -67,7 +70,7 @@ $machinestates = [
         ])
         ->transitions([
             'challenged' => 30,
-            'unchallenged' => 40,
+            'unchallenged' => 30,
         ])
         ->build(),
 
@@ -77,9 +80,11 @@ $machinestates = [
         ->type(StateType::GAME)
         ->action('stResolveChallenge')
         ->transitions([
-            'bluffCaught' => 31,     // Player was bluffing
-            'challengeFailed' => 32,  // Player was truthful 
-            'goToTarget' => 40,       // Minimal path: jump to target selection
+            'bluffCaught' => 31,       // Player was bluffing
+            'challengeFailed' => 32,   // Player was truthful 
+            'goToTarget' => 40,        // Select target now
+            'goToIntercept' => 50,     // Target already chosen; proceed to intercept
+            'goToResolve' => 80,       // No targeting; resolve
         ])
         ->build(),
 
@@ -109,8 +114,9 @@ $machinestates = [
         ])
         ->transitions([
             'nextPlayer' => 95, // Assuming 95 is the state for next player/end of turn
-            'penaltyApplied' => 40,  // Continue to target selection
-            'zombie' => 40,  // Handle zombie players
+            'penaltyApplied' => 50,  // Default path (e.g., after failed challenge)
+            'toResolve' => 80,       // Used when this state resolves the main effect directly
+            'zombie' => 80,  // Handle zombie players
         ])
         ->build(),
 
@@ -128,9 +134,9 @@ $machinestates = [
             'actSkipTargeting'  // For non-targeting cards
         ])
         ->transitions([
-            'targetSelected' => 50,
-            'noTargeting' => 80,
-            'zombie' => 80,  // Handle zombie players
+            'targetSelected' => 20, // After target, go to challenge window
+            'noTargeting' => 20,    // If no targeting, go to challenge window
+            'zombie' => 80,         // Handle zombie players
         ])
         ->build(),
 
@@ -148,7 +154,19 @@ $machinestates = [
         ->transitions([
             'interceptDeclared' => 60,
             'noIntercept' => 80,
+            'noInterceptPenalty' => 52,
             'zombie' => 80,  // Handle zombie players
+        ])
+        ->build(),
+
+    // Prepare attacker-controlled penalty selection (e.g., Alley Cat) after defender passes intercept
+    52 => GameStateBuilder::create()
+        ->name('prepareAttackerPenalty')
+        ->description('Preparing attacker penalty selection')
+        ->type(StateType::GAME)
+        ->action('stPrepareAttackerPenalty')
+        ->transitions([
+            'toPenalty' => 32,
         ])
         ->build(),
 

@@ -170,15 +170,29 @@ class HerdingCats extends Table
         
         // For all other players, only return hand count, not actual cards
 
-        // Get all herds (face-up and face-down counts)
+        // Get all herds (provide arrays the client can rebuild on refresh)
+        // face_down: array of { id } (no types for privacy)
+        // face_up: array of { id, type }
         $result['herds'] = [];
         foreach ($result['players'] as $player_id => $player_info) {
-            $herd_down = $this->cards->getCardsInLocation(CARD_LOCATION_HERD_DOWN, $player_id);
-            $herd_up = $this->cards->getCardsInLocation(CARD_LOCATION_HERD_UP, $player_id);
-            
+            $herd_down_assoc = $this->cards->getCardsInLocation(CARD_LOCATION_HERD_DOWN, $player_id);
+            $herd_up_list = $this->cards->getCardsInLocation(CARD_LOCATION_HERD_UP, $player_id);
+
+            // Normalize face-down to simple array of ids
+            $face_down = [];
+            foreach ($herd_down_assoc as $card_id => $card) {
+                $face_down[] = [ 'id' => intval($card['id']) ];
+            }
+
+            // Normalize face-up to include id and type (other fields ignored by client)
+            $face_up = [];
+            foreach ($herd_up_list as $card) {
+                $face_up[] = [ 'id' => intval($card['id']), 'type' => intval($card['type']) ];
+            }
+
             $result['herds'][$player_id] = [
-                'face_down_count' => count($herd_down),
-                'face_up_cards' => $herd_up
+                'face_down' => $face_down,
+                'face_up' => $face_up,
             ];
         }
 
@@ -188,10 +202,19 @@ class HerdingCats extends Table
             $result['discards'][$player_id] = $this->cards->getCardsInLocation(CARD_LOCATION_DISCARD, $player_id);
         }
 
-        // Get hand counts for all players
+        // Get hand counts for all players (provide both snake_case and camelCase for client compat)
         $result['hand_counts'] = [];
+        $result['handCounts'] = [];
         foreach ($result['players'] as $player_id => $player_info) {
-            $result['hand_counts'][$player_id] = $this->cards->countCardsInLocation(CARD_LOCATION_HAND, $player_id);
+            $cnt = $this->cards->countCardsInLocation(CARD_LOCATION_HAND, $player_id);
+            $result['hand_counts'][$player_id] = $cnt;
+            $result['handCounts'][$player_id] = $cnt;
+        }
+
+        // Provide scores map for client counters (optional convenience)
+        $result['scores'] = [];
+        foreach ($result['players'] as $player_id => $player_info) {
+            $result['scores'][$player_id] = intval($player_info['score']);
         }
 
         // Get current game phase and pending actions if any
@@ -1082,15 +1105,19 @@ class HerdingCats extends Table
         // Notify hand count update
         $this->notifyHandCounts();
         
-        // Go to challenge window state
-        // Using 'declared' transition name which matches states.inc.php
-        $this->gamestate->nextState('declared');
+        // Decide next state: if declared type requires targeting, go pick target first; else go to challenge window
+        if ($this->cardRequiresTargeting(intval($declared_type))) {
+            $this->gamestate->nextState('declaredToTarget');
+        } else {
+            $this->gamestate->nextState('declaredToChallenge');
+        }
     }
 
     function actChallenge($actor_id)
     {
-        self::checkAction('challenge');
-        $player_id = self::getActivePlayerId();
+        self::checkAction('actChallenge');
+        // In MULTIPLE_ACTIVE, challenger is the current player, not the turn's active player
+        $player_id = self::getCurrentPlayerId();
         
         // Validate player can challenge
         if (!$this->canPlayerChallenge($player_id, $actor_id)) {
@@ -1102,8 +1129,14 @@ class HerdingCats extends Table
             throw new feException("Invalid challenge target");
         }
         
-        // Add player to challengers list
-        $challengers = isset($pending['challengers']) ? json_decode($pending['challengers'], true) : [];
+        // Add player to challengers list (be robust: pending may already be decoded)
+        if (!isset($pending['challengers']) || empty($pending['challengers'])) {
+            $challengers = [];
+        } else if (is_array($pending['challengers'])) {
+            $challengers = $pending['challengers'];
+        } else {
+            $challengers = json_decode($pending['challengers'], true) ?: [];
+        }
         if (!in_array($player_id, $challengers)) {
             $challengers[] = $player_id;
             
@@ -1123,14 +1156,15 @@ class HerdingCats extends Table
             ]
         );
         
-        // Remove player from multiactive
-        $this->gamestate->setPlayerNonMultiactive($player_id, 'challenge');
+        // Immediately jump to resolve challenge
+        $this->gamestate->setPlayerNonMultiactive($player_id, 'challenged');
     }
 
     function actPassChallenge()
     {
-        self::checkAction('passChallenge');
-        $player_id = self::getActivePlayerId();
+        self::checkAction('actPassChallenge');
+        // In MULTIPLE_ACTIVE, passer is the current player, not the turn's active player
+        $player_id = self::getCurrentPlayerId();
         
         // Notify pass
         self::notifyAllPlayers('challengePassed',
@@ -1141,13 +1175,13 @@ class HerdingCats extends Table
             ]
         );
         
-        // Remove player from multiactive
-        $this->gamestate->setPlayerNonMultiactive($player_id, 'pass');
+        // When all pass, transition handled by setPlayersMultiactive common transition
+        $this->gamestate->setPlayerNonMultiactive($player_id, '');
     }
 
     function actSelectBlindFromActor($card_index)
     {
-        self::checkAction('selectBlindFromActor');
+        self::checkAction('actSelectBlindFromActor');
         $player_id = self::getActivePlayerId();
         
         $pending = $this->pullPending();
@@ -1193,7 +1227,7 @@ class HerdingCats extends Table
 
     function actSelectBlindFromChallenger($challenger_id, $card_index)
     {
-        self::checkAction('selectBlindFromChallenger');
+        self::checkAction('actSelectBlindFromChallenger');
         $player_id = self::getActivePlayerId();
         
         $pending = $this->pullPending();
@@ -1235,25 +1269,18 @@ class HerdingCats extends Table
         $this->notifyDiscardUpdate($challenger_id);
         
         // Check if more challengers to process
-        $challengers = json_decode($pending['challengers'], true);
+        $challengers = is_array($pending['challengers'])
+            ? $pending['challengers']
+            : (empty($pending['challengers']) ? [] : json_decode($pending['challengers'], true));
         $current_index = array_search($challenger_id, $challengers);
         
-        if ($current_index !== false && $current_index < count($challengers) - 1) {
-            // More challengers to process
-            $this->gamestate->nextState('nextChallenger');
-        } else {
-            // All challengers processed, continue to next state
-            if ($this->isTargetedType($pending['declared_identity'])) {
-                $this->gamestate->nextState('targetSelection');
-            } else {
-                $this->gamestate->nextState('noTargeting');
-            }
-        }
+        // For now, proceed to resolution after applying penalty (non-targeted Kitten path)
+        $this->gamestate->nextState('toResolve');
     }
 
     function actSelectTargetSlot($slot_index, $zone)
     {
-        self::checkAction('selectTarget');
+        self::checkAction('actSelectTargetSlot');
         $player_id = self::getActivePlayerId();
         
         $pending = $this->pullPending();
@@ -1308,7 +1335,7 @@ class HerdingCats extends Table
 
     function actDeclareIntercept($card_id, $zone)
     {
-        self::checkAction('declareIntercept');
+        self::checkAction('actDeclareIntercept');
         $player_id = self::getActivePlayerId();
         
         // Validate Laser Pointer ownership
@@ -1351,7 +1378,7 @@ class HerdingCats extends Table
 
     function actPassIntercept()
     {
-        self::checkAction('passIntercept');
+        self::checkAction('actPassIntercept');
         $player_id = self::getActivePlayerId();
         
         // Notify pass
@@ -1369,7 +1396,7 @@ class HerdingCats extends Table
 
     function actChallengeIntercept()
     {
-        self::checkAction('challengeIntercept');
+        self::checkAction('actChallengeIntercept');
         $player_id = self::getActivePlayerId();
         
         $pending = $this->pullPending();
@@ -1404,7 +1431,7 @@ class HerdingCats extends Table
 
     function actPassChallengeIntercept()
     {
-        self::checkAction('passChallengeIntercept');
+        self::checkAction('actPassChallengeIntercept');
         $player_id = self::getActivePlayerId();
         
         // Notify pass
@@ -1532,25 +1559,35 @@ class HerdingCats extends Table
         }
 
         $actor_id = $pending['actor_player_id'];
-        $challengers_csv = $pending['challengers'];
-        $challenger_ids = json_decode($challengers_csv, true);
-        $challenger_id = null;
+        // 'challengers' is already decoded in pullPending(); be defensive in case of older rows
+        $challengers = is_array($pending['challengers'])
+            ? $pending['challengers']
+            : (empty($pending['challengers']) ? [] : json_decode($pending['challengers'], true));
+        $challenger_id = !empty($challengers) ? intval($challengers[0]) : null;
 
-        if (is_array($challenger_ids) && !empty($challenger_ids)) {
-            $challenger_id = $challenger_ids[0]; // Assuming single challenger
+        // Build challengers envelope expected by client (with hand counts); avoid name lookups to prevent bad ids
+        $challengers_envelope = [];
+        foreach ($challengers as $cid) {
+            $cid = intval($cid);
+            if ($cid > 0) {
+                $challengers_envelope[] = [
+                    'player_id' => $cid,
+                    'hand_count' => $this->cards->countCardsInLocation(CARD_LOCATION_HAND, $cid)
+                ];
+            }
         }
-
-        error_log("argAttackerSelectTruthfulPenalty: pending: " . json_encode($pending));
-        error_log("argAttackerSelectTruthfulPenalty: actor_id: " . $actor_id);
-        error_log("argAttackerSelectTruthfulPenalty: challengers_csv: " . $challengers_csv);
-        error_log("argAttackerSelectTruthfulPenalty: challenger_id: " . $challenger_id);
+        
+        // Defensive logging to aid Studio debugging
+        error_log("argAttackerSelectTruthfulPenalty: actor_id=" . $actor_id);
+        error_log("argAttackerSelectTruthfulPenalty: challengers=" . json_encode($challengers));
+        error_log("argAttackerSelectTruthfulPenalty: challenger_id=" . json_encode($challenger_id));
 
         return [
             'pending_action' => $pending,
             'actor_id' => $actor_id,
             'actor_name' => self::getPlayerNameById($actor_id),
             'challenger_id' => $challenger_id,
-            'challenger_name' => self::getPlayerNameById($challenger_id)
+            'challengers' => $challengers_envelope
         ];
     }
 
@@ -1708,7 +1745,8 @@ class HerdingCats extends Table
         }
         
         // Activate all non-actor players for potential challenges
-        $this->gamestate->setPlayersMultiactive($challengeable_players, '', true);
+        // When all pass, transition to 'unchallenged'
+        $this->gamestate->setPlayersMultiactive($challengeable_players, 'unchallenged', true);
         
         // Notify players about the challenge window
         $pending = $this->pullPending();
@@ -1741,8 +1779,16 @@ class HerdingCats extends Table
         $challengers = isset($pending['challengers']) ? $pending['challengers'] : [];
         
         if (empty($challengers)) {
-            // No challenges, proceed to target selection or end
-            $this->gamestate->nextState('goToTarget');
+            // No challenges: route depending on targeting/selection
+            if ($this->cardRequiresTargeting($declared_type)) {
+                if (!empty($pending['target_player_id']) || !empty($pending['selected_slot_index'])) {
+                    $this->gamestate->nextState('goToIntercept');
+                } else {
+                    $this->gamestate->nextState('goToTarget');
+                }
+            } else {
+                $this->gamestate->nextState('goToResolve');
+            }
             return;
         }
         
@@ -1792,10 +1838,13 @@ class HerdingCats extends Table
         $declared_type = $pending['declared_identity'];
         $actor_id = $pending['actor_player_id'];
         
-        // Check if this card type requires targeting
+        // If card does not require targeting, or target is already selected, bypass UI
         if (!$this->cardRequiresTargeting($declared_type)) {
-            // No targeting needed, proceed to effect resolution
             $this->gamestate->nextState('noTargeting');
+            return;
+        }
+        if (!empty($pending['target_player_id']) || !empty($pending['selected_slot_index'])) {
+            $this->gamestate->nextState('targetSelected');
             return;
         }
         

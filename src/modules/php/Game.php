@@ -26,6 +26,8 @@ class Game extends \Bga\GameFramework\Table
     private const G_ACTOR = 'g_actor';
     private const G_TARGET_PLAYER = 'g_target_player';
     private const G_TARGET_ZONE = 'g_target_zone'; // 1 = hand, 2 = herd
+    private const G_CHALLENGER = 'g_challenger';
+    private const G_PENALTY_TO_RESOLVE = 'g_penalty_to_resolve';
 
     /**
      * Your global variables labels:
@@ -46,6 +48,8 @@ class Game extends \Bga\GameFramework\Table
             self::G_ACTOR => 12,
             self::G_TARGET_PLAYER => 13,
             self::G_TARGET_ZONE => 14,
+            self::G_CHALLENGER => 15,
+            self::G_PENALTY_TO_RESOLVE => 16,
         ]);
 
         self::$CARD_TYPES = [
@@ -269,18 +273,32 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Minimal helper to compute per-player hand counts (placeholder until Deck is wired).
+     * Persistent hand counts stored in globals. In new framework, use $this->globals->get()/set().
      */
     private function getHandCounts(): array
     {
-        // Minimal placeholder: pretend current player has 7 cards, others 7 as well
-        $players = $this->getCollectionFromDb(
-            "SELECT `player_id` `id` FROM `player`"
-        );
-        $counts = [];
-        foreach ($players as $p) {
-            $counts[(int)$p['id']] = 7;
+        $stored = $this->globals->get('hand_counts');
+        if (!is_array($stored)) {
+            $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+            $init = [];
+            foreach ($players as $p) { $init[(int)$p['id']] = 7; }
+            $this->globals->set('hand_counts', $init);
+            return $init;
         }
+        return $stored;
+    }
+
+    private function setHandCounts(array $counts): void
+    {
+        $this->globals->set('hand_counts', $counts);
+    }
+
+    private function adjustHandCount(int $playerId, int $delta): array
+    {
+        $counts = $this->getHandCounts();
+        $current = $counts[$playerId] ?? 0;
+        $counts[$playerId] = max(0, $current + $delta);
+        $this->setHandCounts($counts);
         return $counts;
     }
 
@@ -345,21 +363,38 @@ class Game extends \Bga\GameFramework\Table
 
     public function argAttackerSelectTruthfulPenalty(): array
     {
-        $actor  = (int)$this->getGameStateValue(self::G_ACTOR);
-        $target = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        // On a failed challenge (truthful declaration), the attacker selects a blind penalty
+        // from the challenger(s). Use the stored challenger id, not the targeting value.
+        $actor      = (int)$this->getGameStateValue(self::G_ACTOR);
+        $challenger = (int)$this->getGameStateValue(self::G_CHALLENGER);
+
+        // Defensive guard: if challenger is unset, return minimal args to avoid 0-id lookups
+        if ($challenger === 0) {
+            return [
+                'actor_id'   => $actor,
+                'actor_name' => $this->getPlayerNameById($actor),
+                'challengers' => [],
+            ];
+        }
+
         $args = [
-            'target_player_id'  => $target,
-            'hand_count'        => 7,
-            'actor_id'          => $actor,
-            'actor_name'        => $this->getPlayerNameById($actor),
-            'challenger_id'     => $target,
-            'challenger_name'   => $this->getPlayerNameById($target),
+            // legacy fields some clients expect
+            'target_player_id' => $challenger,
+            'hand_count'       => 7,
+
+            // primary fields
+            'actor_id'        => $actor,
+            'actor_name'      => $this->getPlayerNameById($actor),
+            'challenger_id'   => $challenger,
+            'challenger_name' => $this->getPlayerNameById($challenger),
         ];
-        // Provide a challengers array to satisfy current client code path
+
+        // Provide a challengers array for UIs that iterate
         $args['challengers'] = [[
-            'player_id' => $target,
+            'player_id'  => $challenger,
             'hand_count' => 7,
         ]];
+
         return $args;
     }
 
@@ -374,11 +409,8 @@ class Game extends \Bga\GameFramework\Table
         $player_id = (int)$this->getActivePlayerId();
         $decl = (int)$declared_type;
 
-        // Notify card played and hand counts (minimal)
-        $handCounts = $this->getHandCounts();
-        if (isset($handCounts[$player_id]) && $handCounts[$player_id] > 0) {
-            $handCounts[$player_id] = max(0, $handCounts[$player_id] - 1);
-        }
+        // Notify card played and persist hand counts
+        $handCounts = $this->adjustHandCount($player_id, -1);
 
         $this->notify->all('cardPlayed', clienttranslate('${player_name} plays a card'), [
             'player_id' => $player_id,
@@ -394,9 +426,15 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateValue(self::G_ACTOR, $player_id);
         $this->setGameStateValue(self::G_TARGET_PLAYER, 0);
         $this->setGameStateValue(self::G_TARGET_ZONE, 0);
+        $this->setGameStateValue(self::G_CHALLENGER, 0);
+        $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
 
-        // Advance to challenge window
-        $this->gamestate->nextState('declared');
+        // Branch: targeted cards select opponent first; others go straight to challenge window
+        if ($this->requiresTarget($decl)) {
+            $this->gamestate->nextState('declaredToTarget');
+        } else {
+            $this->gamestate->nextState('declaredToChallenge');
+        }
     }
 
     public function stEnterChallengeWindow(): void
@@ -426,7 +464,7 @@ class Game extends \Bga\GameFramework\Table
         // The challenger is the current player (not the active actor!)
         $challenger_id = (int)$this->getCurrentPlayerId();
         // Store challenger so we can reference in resolve/penalty state
-        $this->setGameStateValue(self::G_TARGET_PLAYER, $challenger_id);
+        $this->setGameStateValue(self::G_CHALLENGER, $challenger_id);
         // Close the challenge window and proceed to resolve
         $this->gamestate->setAllPlayersNonMultiactive('challenged');
     }
@@ -472,14 +510,21 @@ class Game extends \Bga\GameFramework\Table
         // Minimal resolution for prototype: use stored pending + target to drive next state
         $actor     = (int)$this->getGameStateValue(self::G_ACTOR);
         $declared  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
-        $challenger = (int)$this->getGameStateValue(self::G_TARGET_PLAYER); // set in actChallenge
+        $challenger = (int)$this->getGameStateValue(self::G_CHALLENGER); // set in actChallenge
 
         if ($challenger === 0) {
-            // Nobody challenged: go on
+            // Nobody challenged: route depending on whether target is required/selected
             if ($this->requiresTarget($declared)) {
-                $this->gamestate->nextState('goToTarget'); // mapped to 40 in states
+                $currentTarget = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+                if ($currentTarget !== 0) {
+                    // Defender should decide to intercept; make them active
+                    $this->gamestate->changeActivePlayer($currentTarget);
+                    $this->gamestate->nextState('goToIntercept');
+                } else {
+                    $this->gamestate->nextState('goToTarget');
+                }
             } else {
-                $this->gamestate->nextState('challengeFailed'); // jump to add/reveal path via transitions
+                $this->gamestate->nextState('goToResolve');
             }
             return;
         }
@@ -635,7 +680,7 @@ class Game extends \Bga\GameFramework\Table
         $card_id = 100 + max(0, $card_index);
         $card_type = (($card_id - 100) % 6) + 1;
 
-        // Notify removal from target's hand and add to discard (visual only)
+        // Notify removal from target's hand and add to discard
         $this->notify->all('cardRemoved', '', [
             'player_id' => $player_id,
             'card_id'   => $card_id,
@@ -645,10 +690,8 @@ class Game extends \Bga\GameFramework\Table
             'player_id' => $player_id,
             'card' => [ 'id' => $card_id, 'type' => $card_type ],
         ]);
-
-        // Hand counts (placeholder)
-        $counts = $this->getHandCounts();
-        if (isset($counts[$player_id]) && $counts[$player_id] > 0) { $counts[$player_id]--; }
+        // Hand counts (persisted)
+        $counts = $this->adjustHandCount($player_id, -1);
         $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
 
         // Log
@@ -659,7 +702,21 @@ class Game extends \Bga\GameFramework\Table
             'target_name' => $this->getPlayerNameById($player_id),
             'card_index'  => $card_index,
         ]);
-        $this->gamestate->nextState('penaltyApplied');
+        // Route depending on whether the declared card requires targeting
+        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        if ((int)$this->getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1) {
+            $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
+            $this->gamestate->nextState('toResolve');
+            return;
+        }
+
+        if (!$this->requiresTarget($decl)) {
+            // Non-targeting cards (e.g., Kitten): proceed to resolve/add to herd
+            $this->gamestate->nextState('toResolve');
+        } else {
+            // Targeted cards: continue to intercept/resolve flow
+            $this->gamestate->nextState('penaltyApplied');
+        }
     }
 
     public function actSelectBlindFromActor(int $card_index): void
@@ -681,9 +738,7 @@ class Game extends \Bga\GameFramework\Table
             'player_id' => $fromPlayer,
             'card' => [ 'id' => $card_id, 'type' => $card_type ],
         ]);
-
-        $counts = $this->getHandCounts();
-        if (isset($counts[$fromPlayer]) && $counts[$fromPlayer] > 0) { $counts[$fromPlayer]--; }
+        $counts = $this->adjustHandCount($fromPlayer, -1);
         $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
 
         $this->notify->all('bluffPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
@@ -795,7 +850,12 @@ class Game extends \Bga\GameFramework\Table
 
     public function argInterceptDeclare(): array
     {
-        return [];
+        $target = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        // Avoid calling getPlayerNameById with 0 when no target is set
+        $name = $target > 0 ? $this->getPlayerNameById($target) : '';
+        return [
+            'target_player' => $name,
+        ];
     }
 
     public function argInterceptChallengeWindow(): array
@@ -808,6 +868,50 @@ class Game extends \Bga\GameFramework\Table
     public function argInterceptChallengerSelectPenalty(): array
     {
         return [];
+    }
+
+    // =============
+    // Intercept actions (minimal)
+    // =============
+    public function actPassIntercept(): void
+    {
+        $this->checkAction('actPassIntercept');
+        // If Alley Cat was declared, attacker chooses a blind card from target's hand
+        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        if ($decl === 3) { // Alley Cat
+            $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 1);
+            // Switch active player in a dedicated GAME state (safe in engine)
+            $this->gamestate->nextState('noInterceptPenalty');
+            return;
+        }
+        $this->gamestate->nextState('noIntercept');
+    }
+
+    public function stPrepareAttackerPenalty(): void
+    {
+        $actor = (int)$this->getGameStateValue(self::G_ACTOR);
+        $this->gamestate->changeActivePlayer($actor);
+        $this->gamestate->nextState('toPenalty');
+    }
+
+    public function actDeclareIntercept(): void
+    {
+        $this->checkAction('actDeclareIntercept');
+        // For now, just proceed to intercept challenge window without card verification
+        $this->gamestate->nextState('interceptDeclared');
+    }
+
+    public function actChallengeIntercept(): void
+    {
+        $this->checkAction('actChallengeIntercept');
+        // Minimal: treat as no challengers and continue
+        $this->gamestate->nextState('interceptUnchallenged');
+    }
+
+    public function actPassChallengeIntercept(): void
+    {
+        $this->checkAction('actPassChallengeIntercept');
+        $this->gamestate->nextState('interceptUnchallenged');
     }
 
     /**

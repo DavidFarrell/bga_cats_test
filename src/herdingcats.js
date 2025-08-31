@@ -45,7 +45,7 @@ function (dojo, declare) {
             this.targetSelectionActive = false;
             
             // Card type names for UI
-            this.cardTypeNames = { 
+            this.cardTypeNames = {  
                 1: _('Kitten'),
                 2: _('Show Cat'),
                 3: _('Alley Cat'),
@@ -53,6 +53,26 @@ function (dojo, declare) {
                 5: _('Animal Control'),
                 6: _('Laser Pointer')
             };
+        },
+
+        // Build action URL dynamically based on current game slug
+        _actionUrl: function(action) {
+            return "/" + this.game_name + "/" + this.game_name + "/" + action + ".html";
+        },
+
+        // Lightweight client->server log for Studio debugging
+        _log: function(tag) {
+            try {
+                this.ajaxcall(this._actionUrl("actClientLog"), { level: 'info', msg: String(tag).replace(/[^a-zA-Z0-9_]/g,'_') }, this, function(){});
+            } catch(e) {}
+        },
+
+        // Normalize BGA onEnteringState args envelope to the inner args object
+        _stateArgs: function(envelope) {
+            if (envelope && typeof envelope === 'object' && 'args' in envelope) {
+                return envelope.args || {};
+            }
+            return envelope || {};
         },
         
         /*
@@ -246,33 +266,35 @@ function (dojo, declare) {
         onEnteringState: function( stateName, args )
         {
             console.log( 'Entering state: '+stateName, args );
+            this._log('enter_'+stateName);
+            const a = this._stateArgs(args);
             
             switch( stateName )
             {
                 case 'awaitDeclaration':
-                    this.onEnteringState_awaitDeclaration(args);
+                    this.onEnteringState_awaitDeclaration(a);
                     break;
                     
                 case 'challengeWindow':
-                    this.onEnteringState_challengeWindow(args);
+                    this.onEnteringState_challengeWindow(a);
                     break;
                     
                 case 'selectTarget':
-                    this.onEnteringState_selectTarget(args);
+                    this.onEnteringState_selectTarget(a);
                     break;
                     
                 case 'interceptDeclare':
-                    this.onEnteringState_interceptDeclare(args);
+                    this.onEnteringState_interceptDeclare(a);
                     break;
                     
                 case 'interceptChallengeWindow':
-                    this.onEnteringState_interceptChallengeWindow(args);
+                    this.onEnteringState_interceptChallengeWindow(a);
                     break;
                     
                 case 'challengerSelectBluffPenalty':
                 case 'attackerSelectTruthfulPenalty':
                 case 'interceptChallengerSelectPenalty':
-                    this.onEnteringState_selectPenalty(args);
+                    this.onEnteringState_selectPenalty(a);
                     break;
             }
         },
@@ -298,18 +320,19 @@ function (dojo, declare) {
             // Ensure preview is rendered immediately
             const dType = (args && args.declared_card) ? args.declared_card : this.currentDeclaredType;
             if (dType) this.renderDeclaredPreview(dType);
-            
-            // Check if current player can challenge
-            if (args && args.eligible_challengers && args.eligible_challengers.includes(parseInt(this.player_id))) {
-                // Add challenge buttons for eligible players
-                this.addActionButton('challenge_btn', _('Challenge'), 'onChallenge');
-                this.addActionButton('pass_challenge_btn', _('Pass'), 'onPassChallenge', null, false, 'gray');
-            }
         },
 
         onEnteringState_selectTarget: function(args) {
-            if (this.isCurrentPlayerActive()) {
+            // Always update the yellow prompt for clarity
+            this.updateActionPrompts('selectTarget', args);
+
+            // Show selector for the acting player; be robust across engine quirks
+            const isActor = args && (parseInt(args.acting_player_id) === parseInt(this.player_id));
+            if (this.isCurrentPlayerActive() || isActor) {
+                this._log('enter_selectTarget_show');
                 this.showTargetSelection(args);
+            } else {
+                this._log('enter_selectTarget_noactive');
             }
         },
 
@@ -415,6 +438,14 @@ function (dojo, declare) {
                     break;
 
                 case 'selectTarget':
+                    // Ensure the target UI appears even if onEnteringState timing is odd
+                    if (args && args.valid_targets && args.valid_targets.length) {
+                        const isActor = args && (parseInt(args.acting_player_id) === parseInt(this.player_id));
+                        if (this.isCurrentPlayerActive() || isActor) {
+                            this._log('buttons_selectTarget_force_show');
+                            this.showTargetSelection(args);
+                        }
+                    }
                     if (args && args.canSkip) {
                         this.addActionButton('skip_targeting_btn', _('Skip Targeting'), 'onSkipTargeting', null, false, 'gray');
                     }
@@ -447,7 +478,7 @@ function (dojo, declare) {
                     promptText = ''; // Let renderDeclaredPreview handle the display
                     break;
                 case 'selectTarget':
-                    promptText = _('Select your target');
+                    promptText = _('Select your target.');
                     break;
                 case 'interceptDeclare':
                     promptText = _('You are being targeted! Intercept with Laser Pointer?');
@@ -500,26 +531,51 @@ function (dojo, declare) {
 
         showTargetSelection: function(args) {
             if (!args || !args.valid_targets) return;
-            
-            const overlay = $('hc_target_overlay');
-            const optionsDiv = $('hc_target_options');
-            
+            this._log('showTargets_'+(args.valid_targets ? args.valid_targets.length : 0));
+
+            let overlay = $('hc_target_overlay');
+            let optionsDiv = $('hc_target_options');
+
+            // If overlay/template nodes are missing (safety), fallback to inline rendering
+            if (!overlay || !optionsDiv) {
+                this._log('fallback_inline');
+                const promptsDiv = $('hc_action_prompts');
+                if (!promptsDiv) return;
+                let inline = $('hc_inline_targets');
+                if (inline) dojo.destroy(inline);
+                inline = dojo.create('div', { id: 'hc_inline_targets', style: 'margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;' }, promptsDiv);
+                const zone = args.target_zone || '';
+                args.valid_targets.forEach(t => {
+                    const id = (t.id !== undefined) ? t.id : (t.player_id !== undefined ? t.player_id : t.card_id);
+                    const name = (t.name) || (t.player_name) || (_('Target'));
+                    const btn = dojo.create('button', { className: 'hc_target_btn', innerHTML: name }, inline);
+                    dojo.attr(btn, 'data-target-id', id);
+                    dojo.attr(btn, 'data-target-zone', (t.zone || zone || ''));
+                    dojo.connect(btn, 'onclick', this, () => this.onSelectTarget(id, (t.zone || zone || '')));
+                });
+                return;
+            }
+
             // Clear previous options
             optionsDiv.innerHTML = '';
-            
-            // Add target buttons
-            args.valid_targets.forEach(target => {
-                const button = dojo.place(dojo.string.substitute(jstpl_target_button, {
-                    target_id: target.id,
-                    target_zone: target.zone,
-                    target_name: target.name
+            this._log('overlay_ok');
+
+            const zone = args.target_zone || null;
+
+            // Normalize and add target buttons (server may send different shapes)
+            args.valid_targets.forEach(t => {
+                const id = (t.id !== undefined) ? t.id : (t.player_id !== undefined ? t.player_id : t.card_id);
+                const name = (t.name) || (t.player_name) || (_('Target'));
+                const btn = dojo.place(dojo.string.substitute(jstpl_target_button, {
+                    target_id: id,
+                    target_zone: (t.zone || zone || ''),
+                    target_name: name
                 }), optionsDiv);
-                
-                dojo.connect(button, 'onclick', this, function(evt) {
-                    this.onSelectTarget(target.id, target.zone);
+                dojo.connect(btn, 'onclick', this, () => {
+                    this.onSelectTarget(id, (t.zone || zone || ''));
                 });
             });
-            
+
             dojo.style(overlay, 'display', 'flex');
             this.targetSelectionActive = true;
         },
@@ -631,7 +687,7 @@ function (dojo, declare) {
             this.hideDeclarationDialog();
             
             // Send declaration to server
-            this.ajaxcall("/herdingcats/herdingcats/actDeclare.html", {
+            this.ajaxcall(this._actionUrl("actDeclare"), {
                 card_id: cardId,
                 declared_type: declaredType,
                 lock: true
@@ -661,13 +717,13 @@ function (dojo, declare) {
                 params.actor_id = actorId;
             }
             
-            this.ajaxcall("/herdingcats/herdingcats/actChallenge.html", params, this, function(result) {
+            this.ajaxcall(this._actionUrl("actChallenge"), params, this, function(result) {
                 // Success handled by notification
             });
         },
 
         onPassChallenge: function() {
-            this.ajaxcall("/herdingcats/herdingcats/actPassChallenge.html", {
+            this.ajaxcall(this._actionUrl("actPassChallenge"), {
                 lock: true
             }, this, function(result) {
                 // Success handled by notification
@@ -677,7 +733,7 @@ function (dojo, declare) {
         onPickTruthPenalty: function(index) {
             const args = this._penaltyArgs || {};
             const targetId = args.target_player_id;
-            this.ajaxcall("/herdingcats/herdingcats/actSelectBlindFromChallenger.html", {
+            this.ajaxcall(this._actionUrl("actSelectBlindFromChallenger"), {
                 player_id: targetId,
                 card_index: index,
                 lock: true
@@ -685,7 +741,7 @@ function (dojo, declare) {
         },
 
         onPickBluffPenalty: function(index) {
-            this.ajaxcall("/herdingcats/herdingcats/actSelectBlindFromActor.html", {
+            this.ajaxcall(this._actionUrl("actSelectBlindFromActor"), {
                 card_index: index,
                 lock: true
             }, this, function(result) {});
@@ -708,7 +764,7 @@ function (dojo, declare) {
         onSelectTarget: function(targetId, targetZone) {
             this.hideTargetSelection();
             
-            this.ajaxcall("/herdingcats/herdingcats/actSelectTargetSlot.html", {
+            this.ajaxcall(this._actionUrl("actSelectTargetSlot"), {
                 slot_index: targetId,
                 zone: targetZone,
                 lock: true
@@ -718,7 +774,7 @@ function (dojo, declare) {
         },
 
         onSkipTargeting: function() {
-            this.ajaxcall("/herdingcats/herdingcats/actSkipTargeting.html", {
+            this.ajaxcall(this._actionUrl("actSkipTargeting"), {
                 lock: true
             }, this, function(result) {
                 // Success handled by notification
@@ -730,7 +786,7 @@ function (dojo, declare) {
         },
 
         onDeclareIntercept: function() {
-            this.ajaxcall("/herdingcats/herdingcats/actDeclareIntercept.html", {
+            this.ajaxcall(this._actionUrl("actDeclareIntercept"), {
                 lock: true
             }, this, function(result) {
                 // Success handled by notification
@@ -738,7 +794,7 @@ function (dojo, declare) {
         },
 
         onPassIntercept: function() {
-            this.ajaxcall("/herdingcats/herdingcats/actPassIntercept.html", {
+            this.ajaxcall(this._actionUrl("actPassIntercept"), {
                 lock: true
             }, this, function(result) {
                 // Success handled by notification
@@ -746,7 +802,7 @@ function (dojo, declare) {
         },
 
         onChallengeIntercept: function() {
-            this.ajaxcall("/herdingcats/herdingcats/actChallengeIntercept.html", {
+            this.ajaxcall(this._actionUrl("actChallengeIntercept"), {
                 lock: true
             }, this, function(result) {
                 // Success handled by notification
@@ -754,7 +810,7 @@ function (dojo, declare) {
         },
 
         onPassChallengeIntercept: function() {
-            this.ajaxcall("/herdingcats/herdingcats/actPassChallengeIntercept.html", {
+            this.ajaxcall(this._actionUrl("actPassChallengeIntercept"), {
                 lock: true
             }, this, function(result) {
                 // Success handled by notification
@@ -763,7 +819,7 @@ function (dojo, declare) {
 
         onSelectBlindCard: function(playerId, zone) {
             // Handle blind card selection for penalties
-            this.ajaxcall("/herdingcats/herdingcats/actSelectBlindFromActor.html", {
+            this.ajaxcall(this._actionUrl("actSelectBlindFromActor"), {
                 target_player: playerId,
                 lock: true
             }, this, function(result) {

@@ -8,6 +8,11 @@ define(["dojo","dojo/_base/declare","ebg/core/gamegui","ebg/stock"], function (d
       this.C = { KITTEN:1, SHOWCAT:2, ALLEYCAT:3, CATNIP:4, ANIMALCONTROL:5, LASERPOINTER:6 };
     },
 
+    // Helper to generate slug-agnostic action URLs
+    _actionUrl: function (action) {
+      return "/" + this.game_name + "/" + this.game_name + "/" + action + ".html";
+    },
+
     // -----------------------------------------------------------------------
     // Setup
     // -----------------------------------------------------------------------
@@ -142,7 +147,7 @@ define(["dojo","dojo/_base/declare","ebg/core/gamegui","ebg/stock"], function (d
     _onSelectTarget: function (targetPlayerId, zone) {
       // Server handler expects the chosen player id in slot_index (historic naming) and the zone.
       this.ajaxcall(
-        "/bgacats/bgacats/actSelectTargetSlot.html",
+        this._actionUrl("actSelectTargetSlot"),
         { lock: true, slot_index: targetPlayerId, zone: zone },
         this,
         () => {},
@@ -152,7 +157,7 @@ define(["dojo","dojo/_base/declare","ebg/core/gamegui","ebg/stock"], function (d
 
     _onSkipTargeting: function () {
       this.ajaxcall(
-        "/bgacats/bgacats/actSkipTargeting.html",
+        this._actionUrl("actSkipTargeting"),
         { lock: true },
         this,
         () => {},
