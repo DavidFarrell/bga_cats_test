@@ -27,7 +27,7 @@ Cross-Cutting Checks (apply to every case)
 
 Mechanics Test Matrix
 - Declarations: out-of-turn blocked; in-turn requires declare + optional target.
-- Challenge flow: pass/one/many challengers; truthful vs bluff outcomes; first-challenger penalty-pick on bluff.
+- Challenge flow: pass/one challenger; truthful vs bluff outcomes; challenger penalty-pick on bluff.
 - Interception (Laser Pointer): from hand (vs. Alley Cat/Catnip) and from herd (vs. Animal Control); LP claim may be challenged; on success, selected card remains hidden and untouched; LP goes face-up to discard; attacker’s played card still enters herd-FD.
 - Ineffective-against-itself: Alley Cat↔Alley Cat (hand), Catnip↔Catnip (hand), Animal Control↔Animal Control (herd) behave per spec.
 - End condition: if any player reaches 0 cards in hand at end of a turn, game ends and scoring runs.

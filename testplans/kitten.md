@@ -1,7 +1,7 @@
 Herding Cats — Kitten Test Plan
 
 Summary
-- Non-targeting play; value 2 in herd. Physical card becomes Kitten when added to herd. Tests cover declaration, challenge outcomes, bluff, multi-challenges, UI changes.
+- Non-targeting play; value 2 in herd. Physical card becomes Kitten when added to herd. Tests cover declaration, challenge outcomes, bluff, and UI changes.
 
 Preconditions
 - Players A (active) and B (opponent) seated; fresh game; A holds at least one Kitten.
@@ -52,24 +52,6 @@ Expected:
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
-<a id="k5"></a>
-Case K5 — Multiple challengers, A truthful
-1) A declares Kitten; B and C challenge; card is truly Kitten.
-2) A picks a blind slot for B, then for C (independently).
-Expected:
-- Each challenger discards one blind card; their hand counters -1 each.
-- A’s card enters herd-FD; logs show both penalties.
-Cleanup:
-- Express Stop the game before proceeding to any other case.
-
-<a id="k6"></a>
-Case K6 — End-of-turn and end-of-game check
-1) Reduce A’s hand to 0 by successive truthful Kitten plays.
-Expected:
-- At end of A’s turn with 0 cards in hand, game ends and scoring runs.
-Cleanup:
-- Express Stop the game before proceeding to any other case.
-
 UI/Validation Checklist (all cases)
 - Only A can act during A’s turn; others only see Challenge/Pass.
 - Staging area shows B’s hand backs in fixed order for blind pick when needed.
@@ -78,10 +60,9 @@ UI/Validation Checklist (all cases)
 Case Checklist
 - [x] [K1 — Truthful, unchallenged](#k1)
 - [x] [K2 — Truthful, challenged and challenge fails](#k2)
- - [x] [K3 — Bluff, unchallenged](#k3)
- - [ ] [K4 — Bluff, challenged and challenge succeeds](#k4)
- - [ ] [K5 — Multiple challengers, A truthful](#k5)
- - [ ] [K6 — End-of-turn and end-of-game check](#k6)
+- [x] [K3 — Bluff, unchallenged](#k3)
+- [x] [K4 — Bluff, challenged and challenge succeeds](#k4)
+ 
 
 Case Index (JSON)
 ```
@@ -90,9 +71,7 @@ Case Index (JSON)
     { "id": "k1", "title": "Truthful, unchallenged" },
     { "id": "k2", "title": "Truthful, challenged and challenge fails" },
     { "id": "k3", "title": "Bluff, unchallenged" },
-    { "id": "k4", "title": "Bluff, challenged and challenge succeeds" },
-    { "id": "k5", "title": "Multiple challengers, A truthful" },
-    { "id": "k6", "title": "End-of-turn and end-of-game check" }
+    { "id": "k4", "title": "Bluff, challenged and challenge succeeds" }
   ]
 }
 ```

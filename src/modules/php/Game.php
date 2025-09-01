@@ -1026,6 +1026,13 @@ class Game extends \Bga\GameFramework\Table
     // Minimal end turn handler to rotate to next player
     public function stEndTurn(): void
     {
+        // Rotate relative to the actor whose turn just ended, not whoever
+        // happens to be active at this moment (e.g., challenger during penalties).
+        $actor = (int)$this->getGameStateValue(self::G_ACTOR);
+        if ($actor > 0) {
+            $this->gamestate->changeActivePlayer($actor);
+        }
+
         // Clear pending turn data to avoid leakage across turns
         $this->setGameStateValue(self::G_PENDING_CARD, 0);
         $this->setGameStateValue(self::G_PENDING_DECL, 0);
@@ -1036,6 +1043,7 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateValue(self::G_CHALLENGER, 0);
         $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
 
+        // Now advance to the next player in turn order
         $this->activeNextPlayer();
         $this->gamestate->nextState('nextPlayer');
     }
