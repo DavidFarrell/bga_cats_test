@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <codebase>
-  <file path="gameoptions.inc.php" type="php">&lt;?php
+  <file path="gameoptions.inc.php" type="inc.php">&lt;?php
 /**
  * gameoptions.inc.php
  */
@@ -338,157 +338,60 @@ fi
 echo &quot;&quot;
 echo &quot;💡 Use these files as reference for your implementation!&quot;
 echo &quot;⚠️  Remember: These are READ-ONLY references. Don't edit them directly.&quot;</file>
-  <file path="cycle_tracker.sh" type="sh">#!/usr/bin/env bash
-set -euo pipefail
+  <file path="testplan.md" type="md">Herding Cats — End-to-End Test Plan (BGA Studio)
 
-# Simple counter for test → evaluate → debug cycles
-# Usage:
-#   ./cycle_tracker.sh bump      # increment counter, remind on 5,10,15...
-#   ./cycle_tracker.sh status    # show current count
-#   ./cycle_tracker.sh reset     # reset to 0 (run after /compact)
-#   ./cycle_tracker.sh maybe-context  # print reminder if at multiple of 5
+Scope
+- End-to-end functional tests for Herding Cats using BGA Studio (manual or Playwright-driven).
+- Validates declarations, challenge flow, interceptions, ineffective-against-itself, zone/visibility, and scoring.
 
-COUNTER_FILE=&quot;.context_cycles&quot;
+Prerequisites
+- BGA Studio table with 2–4 dev accounts (Playwright can automate logins via .env).
+- Fresh game state unless a case specifies mid-game setup.
+- Auto-deploy on save is active; refresh table between cases as needed.
 
-read_count() {
-  local n=0
-  if [[ -f &quot;$COUNTER_FILE&quot; ]]; then
-    if n=$(cat &quot;$COUNTER_FILE&quot; 2&gt;/dev/null); then
-      if [[ ! &quot;$n&quot; =~ ^[0-9]+$ ]]; then n=0; fi
-    else
-      n=0
-    fi
-  fi
-  echo &quot;$n&quot;
-}
+Playwright Start/Stop
+- Before running any test case: Express Start the game via Studio (automated by Playwright).
+- After completing each test case: ALWAYS perform Express Stop on the table page (click header “Logo” → “Express stop”/“Quit game”). This prevents stale state from affecting subsequent tests.
 
-write_count() {
-  echo -n &quot;$1&quot; &gt; &quot;$COUNTER_FILE&quot;
-}
+Conventions
+- Players: A (active), B (defender), C/D (other challengers).
+- Zones: hand (hidden), herd-FD (face-down), herd-FU (face-up), discard (public).
+- “Staging area” = UI overlay showing card-back slots for hidden selections.
+- “Counters” = hand size next to each player name; herd count if present.
 
-cmd=${1:-status}
-case &quot;$cmd&quot; in
-  bump)
-    n=$(read_count)
-    n=$((n+1))
-    write_count &quot;$n&quot;
-    echo &quot;Cycle count: $n&quot;
-    if (( n % 5 == 0 )); then
-      echo &quot;HARD RULE: run /context now.&quot;
-    fi
-    ;;
-  reset)
-    write_count 0
-    echo &quot;Cycle count reset to 0.&quot;
-    ;;
-  status)
-    n=$(read_count)
-    echo &quot;Cycle count: $n&quot;
-    ;;
-  maybe-context)
-    n=$(read_count)
-    if (( n &gt; 0 &amp;&amp; n % 5 == 0 )); then
-      echo &quot;HARD RULE: run /context now.&quot;
-    else
-      echo &quot;No /context needed yet (count=$n).&quot;
-    fi
-    ;;
-  *)
-    echo &quot;Usage: $0 {bump|reset|status|maybe-context}&quot; &gt;&amp;2
-    exit 1
-    ;;
-esac
+Cross-Cutting Checks (apply to every case)
+- Logs: declaration, challenges, reveals, interceptions, discards, herd additions.
+- UI: correct enable/disable of actions; target selection gates (e.g., only FD herd for Animal Control).
+- Counters: hand counts adjust; herd additions visible to all (FD), identity only to owner when appropriate.
+- Refresh: reloading the page reconstructs the same state via getAllDatas.
 
+Mechanics Test Matrix
+- Declarations: out-of-turn blocked; in-turn requires declare + optional target.
+- Challenge flow: pass/one/many challengers; truthful vs bluff outcomes; first-challenger penalty-pick on bluff.
+- Interception (Laser Pointer): from hand (vs. Alley Cat/Catnip) and from herd (vs. Animal Control); LP claim may be challenged; on success, selected card remains hidden and untouched; LP goes face-up to discard; attacker’s played card still enters herd-FD.
+- Ineffective-against-itself: Alley Cat↔Alley Cat (hand), Catnip↔Catnip (hand), Animal Control↔Animal Control (herd) behave per spec.
+- End condition: if any player reaches 0 cards in hand at end of a turn, game ends and scoring runs.
+- Scoring: Show Cat=5 (or 7 if any Kitten present), Kitten=2, Alley Cat=1, Catnip=1, Animal Control=0, Laser Pointer=0; hand bonus +1 per 2 cards (rounded up).
+
+Card-Specific Plans
+- See per-card documents under testplans/:
+  - testplans/kitten.md
+  - testplans/show_cat.md
+  - testplans/alley_cat.md
+  - testplans/catnip.md
+  - testplans/animal_control.md
+  - testplans/laser_pointer.md
+
+Progress Tracking
+- Each per-card plan ends with a case checklist. Mark &quot;[x]&quot; when a case passes; leave &quot;[ ]&quot; and append &quot;❌&quot; if failing.
+- Work through cases top-to-bottom. When a case fails, capture logs/screenshots, fix, retest, then change to &quot;[x]&quot;.
+- Use Express Start before each case and Express Stop after each case. Reset tables between attempts if state is ambiguous.
+
+Playwright Notes
+- Prefer deterministic setups: if specific cards are required, reset until present or use developer helpers if available.
+- Drive: declare → challenge dialog(s) → target selection overlay → optional LP interception → resolution → end-turn.
+- Assert: DOM texts, counters, element visibility, notifications, and card movements (e.g., remove from hand, add to herd-FD).
 </file>
-  <file path="gameinfos.inc.php" type="php">&lt;?php
-/**
- * Herding Cats - gameinfos
- * Keep the game name equal to the Studio project directory.
- */
-$gameinfos = array(
-    'game_name' =&gt; 'Herding Cats',
-    'designer' =&gt; 'Internal',
-    'artist' =&gt; 'Internal',
-    'year' =&gt; 2025,
-    'publisher' =&gt; '—',
-    'publisher_website' =&gt; '',
-    'players' =&gt; array( 2, 3, 4, 5, 6 ),
-    'suggest_player_number' =&gt; 4,
-    'not_recommend_player_number' =&gt; array(),
-    'estimated_duration' =&gt; 15,
-    'fast_additional_time' =&gt; 2,
-    'slow_additional_time' =&gt; 5,
-    'tie_breaker_description' =&gt; '',
-    'losers_not_ranked' =&gt; false,
-    'interface_version' =&gt; 2,
-    'is_beta' =&gt; 1,
-    'tags' =&gt; array( 'bluff', 'hand-management', 'deduction' ),
-    'presentation' =&gt; array(
-        totranslate('Bluff, challenge and herd the highest-scoring cats.'),
-    ),
-    'game_interface' =&gt; array(
-        'minimum' =&gt; array( 'notifs' =&gt; 1, 'chat' =&gt; 1 ),
-        'recommended' =&gt; array( 'tooltip' =&gt; 1, 'zoom' =&gt; 1, 'mobile' =&gt; 1 )
-    ),
-    'player_colors' =&gt; array( 'ff0000', '008000', '0000ff', 'ffa500', 'e94190', '982fff' )
-);</file>
-  <file path="material.inc.php" type="php">&lt;?php
-/**
- * material.inc.php - constants and helpers
- */
-
-// Card type constants (printed identities)
-define('HC_TYPE_KITTEN', 1);
-define('HC_TYPE_SHOWCAT', 2);
-define('HC_TYPE_ALLEY', 3);
-define('HC_TYPE_CATNIP', 4);
-define('HC_TYPE_ANIMAL', 5);
-define('HC_TYPE_LASER', 6);
-
-// Herd zone names
-define('HC_LOC_HAND', 'hand');         // location_arg = player_id, card_location_arg = position (1..N)
-define('HC_LOC_HERD', 'herd');         // face-down
-define('HC_LOC_HERD_UP', 'herdup');    // face-up, protected
-define('HC_LOC_DISCARD', 'discard');   // location_arg = player_id
-define('HC_LOC_REMOVED', 'removed');   // location_arg = player_id
-define('HC_LOC_PLAYED', 'played');     // temporary, location_arg = attacker_id
-
-// Targets
-define('HC_TGT_NONE', 0);
-define('HC_TGT_HAND', 1);
-define('HC_TGT_HERD', 2);
-
-// Game state value keys
-define('GV_ATTACKER', 1);
-define('GV_DEFENDER', 2);
-define('GV_PLAYED_CARD_ID', 3);
-define('GV_DECLARED_TYPE', 4);
-define('GV_TARGET_PLAYER', 5);
-define('GV_TARGET_ZONE', 6);
-define('GV_TARGET_SLOT', 7);
-define('GV_SELECTED_HERD_CARD', 8);
-define('GV_CHALLENGER_BITS', 9);
-define('GV_FIRST_CHAL_NO', 10);
-define('GV_INTERCEPT_ZONE', 11);
-define('GV_INTERCEPT_CHAL_BITS', 12);
-define('GV_FIRST_INTERCEPT_CHAL_NO', 13);
-define('GV_TRUTH_PENALTY_NEXT_NO', 14);
-define('GV_PHASE_MARKER', 15);
-
-// State constants
-define('ST_GAME_SETUP', 1);
-define('ST_PLAYER_DECLARE', 10);
-define('ST_CHALLENGE_WINDOW', 11);
-define('ST_RESOLVE_CHALLENGE', 12);
-define('ST_SELECT_TARGET', 13);
-define('ST_INTERCEPT_DECISION', 14);
-define('ST_INTERCEPT_CHALLENGE', 15);
-define('ST_RESOLVE_INTERCEPT', 16);
-define('ST_RESOLVE_EFFECT', 17);
-define('ST_BLUFF_PENALTY_PICK', 18);
-define('ST_TRUTH_PENALTY_PICK', 19);
-define('ST_END_TURN', 98);
-define('ST_SCORING', 99);</file>
   <file path="unmount_bga.sh" type="sh">#!/bin/bash
 echo &quot;Unmounting BGA folder...&quot;
 umount ~/BGA_mount
@@ -3492,174 +3395,6 @@ For questions about this implementation:
 ---
 
 *Last Updated: January 2025*</file>
-  <file path="states.inc.php" type="php">&lt;?php
-/**
- * States
- *
- * Note the extra transition 'declaredTarget' out of 'awaitDeclaration'.
- * Backend should call $this-&gt;gamestate-&gt;nextState('declaredTarget') when
- * the declared card requires a target (e.g. Alley Cat, Animal Control).
- */
-
-$machinestates = array(
-
-  // 1xx: game management
-  1 =&gt; array(
-    'name' =&gt; 'gameSetup',
-    'type' =&gt; 'manager',
-    'description' =&gt; clienttranslate('Game setup'),
-    'action' =&gt; 'stGameSetup',
-    'transitions' =&gt; array( '' =&gt; 10 )
-  ),
-
-  // 10: active player declares a card to play
-  10 =&gt; array(
-    'name' =&gt; 'awaitDeclaration',
-    'type' =&gt; 'activeplayer',
-    'description' =&gt; clienttranslate('${actplayer} must declare a card and play it'),
-    'descriptionmyturn' =&gt; clienttranslate('${you} must declare a card identity and play it'),
-    'args' =&gt; 'argAwaitDeclaration',
-    'possibleactions' =&gt; array('actDeclare'),
-    // NB: we keep the existing 'declared' -&gt; challengeWindow for non-targeting cards
-    // and add 'declaredTarget' -&gt; selectTarget to target first when needed.
-    'transitions' =&gt; array(
-      'declared'       =&gt; 20, // old flow (e.g. Kitten, Show Cat, Catnip)
-      'declaredTarget' =&gt; 40  // new flow for Alley Cat / Animal Control
-    ),
-  ),
-
-  // 20: challenge window for the initial declaration
-  20 =&gt; array(
-    'name' =&gt; 'challengeWindow',
-    'type' =&gt; 'multipleactiveplayer',
-    'description' =&gt; clienttranslate('Waiting for possible challenges'),
-    'descriptionmyturn' =&gt; clienttranslate('You may challenge the declaration'),
-    'action' =&gt; 'stEnterChallengeWindow',
-    'args' =&gt; 'argChallengeWindow',
-    'possibleactions' =&gt; array('actChallenge','actPassChallenge'),
-    'transitions' =&gt; array(
-      'challenged'   =&gt; 30,
-      'unchallenged' =&gt; 40, // go to select target if not done yet
-    ),
-  ),
-
-  // 30: resolve challenge
-  30 =&gt; array(
-    'name' =&gt; 'resolveChallenge',
-    'type' =&gt; 'game',
-    'action' =&gt; 'stResolveChallenge',
-    'transitions' =&gt; array(
-      'bluffCaught'      =&gt; 31,
-      'challengeFailed'  =&gt; 32,
-      'goToTarget'       =&gt; 40
-    ),
-  ),
-
-  // 31/32: penalties after challenge resolution
-  31 =&gt; array(
-    'name' =&gt; 'challengerSelectBluffPenalty',
-    'type' =&gt; 'activeplayer',
-    'description' =&gt; clienttranslate('A challenger may discard one card from the actor\'s hand'),
-    'descriptionmyturn' =&gt; clienttranslate('Select one card from the actor\'s hand to discard'),
-    'args' =&gt; 'argChallengerSelectBluffPenalty',
-    'possibleactions' =&gt; array('actSelectBlindFromActor'),
-    'transitions' =&gt; array('penaltyApplied' =&gt; 95, 'zombie' =&gt; 95),
-  ),
-
-  32 =&gt; array(
-    'name' =&gt; 'attackerSelectTruthfulPenalty',
-    'type' =&gt; 'activeplayer',
-    'description' =&gt; clienttranslate('${actor_name} may discard a card from ${challenger_name}\'s hand'),
-    'descriptionmyturn' =&gt; clienttranslate('You may discard one card from ${challenger_name}\'s hand'),
-    'args' =&gt; 'argAttackerSelectTruthfulPenalty',
-    'possibleactions' =&gt; array('actSelectBlindFromChallenger'),
-    'transitions' =&gt; array('nextPlayer' =&gt; 95, 'penaltyApplied' =&gt; 40, 'zombie' =&gt; 40),
-  ),
-
-  // 40: select target (player or zone)
-  40 =&gt; array(
-    'name' =&gt; 'selectTarget',
-    'type' =&gt; 'activeplayer',
-    'description' =&gt; clienttranslate('${actplayer} must select a target'),
-    'descriptionmyturn' =&gt; clienttranslate('${you} must select a target'),
-    'action' =&gt; 'stEnterSelectTarget',
-    'args'   =&gt; 'argSelectTarget',
-    'possibleactions' =&gt; array('actSelectTargetSlot','actSkipTargeting'),
-    'transitions' =&gt; array(
-      'targetSelected' =&gt; 50,
-      'noTargeting'    =&gt; 80,
-      'zombie'         =&gt; 80
-    ),
-  ),
-
-  // 50..90: unchanged from your current file (intercept, reveal, add to herd, end turn)
-  50 =&gt; array(
-    'name' =&gt; 'interceptDeclare',
-    'type' =&gt; 'activeplayer',
-    'description' =&gt; clienttranslate('${target_player} may intercept with Laser Pointer'),
-    'args' =&gt; 'argInterceptDeclare',
-    'possibleactions' =&gt; array('actDeclareIntercept','actPassIntercept'),
-    'transitions' =&gt; array('interceptDeclared' =&gt; 60, 'noIntercept' =&gt; 80, 'zombie' =&gt; 80),
-  ),
-
-  60 =&gt; array(
-    'name' =&gt; 'interceptChallengeWindow',
-    'type' =&gt; 'multipleactiveplayer',
-    'description' =&gt; clienttranslate('Players may challenge ${defender}\'s Laser Pointer intercept'),
-    'args' =&gt; 'argInterceptChallengeWindow',
-    'possibleactions' =&gt; array('actChallengeIntercept','actPassChallengeIntercept'),
-    'transitions' =&gt; array('interceptChallenged' =&gt; 70,'interceptUnchallenged' =&gt; 80),
-  ),
-
-  70 =&gt; array(
-    'name' =&gt; 'resolveInterceptChallenge',
-    'type' =&gt; 'game',
-    'action' =&gt; 'stResolveInterceptChallenge',
-    'transitions' =&gt; array(
-      'interceptBluffCaught'   =&gt; 75,
-      'interceptChallengeFailed'=&gt; 80,
-      'interceptGoToResolve'   =&gt; 80
-    ),
-  ),
-
-  75 =&gt; array(
-    'name' =&gt; 'interceptChallengerSelectPenalty',
-    'type' =&gt; 'activeplayer',
-    'description' =&gt; clienttranslate('${intercept_challenger} selects penalty card from ${bluffer}'),
-    'args' =&gt; 'argInterceptChallengerSelectPenalty',
-    'possibleactions' =&gt; array('actSelectBlindFromActor'),
-    'transitions' =&gt; array('interceptPenaltyApplied' =&gt; 80, 'zombie' =&gt; 80),
-  ),
-
-  80 =&gt; array(
-    'name' =&gt; 'revealAndResolve',
-    'type' =&gt; 'game',
-    'action' =&gt; 'stRevealAndResolve',
-    'transitions' =&gt; array('effectResolved' =&gt; 90),
-  ),
-
-  90 =&gt; array(
-    'name' =&gt; 'addPlayedCardToHerd',
-    'type' =&gt; 'game',
-    'action' =&gt; 'stAddPlayedCardToHerd',
-    'transitions' =&gt; array('cardAdded' =&gt; 95),
-  ),
-
-  95 =&gt; array(
-    'name' =&gt; 'endTurn',
-    'type' =&gt; 'game',
-    'action' =&gt; 'stEndTurn',
-    'updateGameProgression' =&gt; true,
-    'transitions' =&gt; array('gameEnd' =&gt; 99, 'nextPlayer' =&gt; 10, 'zombie' =&gt; 10),
-  ),
-
-  99 =&gt; array(
-    'name' =&gt; 'endScore',
-    'type' =&gt; 'game',
-    'action' =&gt; 'stEndScore',
-    'transitions' =&gt; array( '' =&gt; 99 ),
-  )
-);</file>
   <file path="DEPLOYMENT_GUIDE.md" type="md"># 🚀 BGA Herding Cats - Deployment Guide
 
 ## ✅ Implementation Complete!
@@ -3988,40 +3723,6 @@ else
         echo &quot;    brew install inotify-tools&quot;
     fi
 fi</file>
-  <file path="dbmodel.sql" type="sql">-- Standard BGA deck tables
-CREATE TABLE IF NOT EXISTS `card` (
-  `card_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `card_type` int(10) unsigned NOT NULL,
-  `card_type_arg` int(11) NOT NULL DEFAULT 0,
-  `card_location` varchar(32) NOT NULL,
-  `card_location_arg` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`card_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
-CREATE TABLE IF NOT EXISTS `card_global` (
-  `global_id` int(10) unsigned NOT NULL,
-  `global_value` int(10) unsigned NOT NULL,
-  PRIMARY KEY (`global_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;</file>
-  <file path="stats.inc.php" type="php">&lt;?php
-/**
- * stats.inc.php
- */
-$stats_type = array(
-    'table' =&gt; array(
-        'rounds' =&gt; array(
-            'id' =&gt; 10,
-            'name' =&gt; totranslate('Turns played'),
-            'type' =&gt; 'int'
-        ),
-    ),
-    'player' =&gt; array(
-        'bluffs_caught' =&gt; array( 'id'=&gt;11, 'name'=&gt; totranslate('Bluffs caught'), 'type'=&gt;'int' ),
-        'failed_challenges' =&gt; array( 'id'=&gt;12, 'name'=&gt; totranslate('Failed challenges'), 'type'=&gt;'int' ),
-        'intercepts' =&gt; array( 'id'=&gt;13, 'name'=&gt; totranslate('Successful intercepts'), 'type'=&gt;'int' ),
-        'cards_in_herd' =&gt; array( 'id'=&gt;14, 'name'=&gt; totranslate('Cards in herd at end'), 'type'=&gt;'int' ),
-    )
-);</file>
   <file path="mount_bga.sh" type="sh">#!/bin/bash
 echo &quot;Mounting BGA herdingcats folder...&quot;
 echo &quot;da89f0ad092bf8dbe8fe0d6140e10e4f&quot; | sshfs -o password_stdin PaidiaGames@1.studio.boardgamearena.com:/herdingcats ~/BGA_mount -p 2022
@@ -4031,6 +3732,153 @@ if [ $? -eq 0 ]; then
 else
     echo &quot;❌ Mount failed. Check that macFUSE is running.&quot;
 fi</file>
+  <file path="CLAUDE.md" type="md"># Herding Cats Game Project - Initial Briefing
+
+Please help me work on the Herding Cats game project. Start by reading the following documents in this specific order to understand the project:
+
+1. **Game Design Document**: `/workspace/projects/bga_cats_test/game_design.md`
+   - This contains the core game concept, rules, and mechanics
+
+2. **Game Implementation Plan**: `/workspace/projects/bga_cats_test/game_implementation_plan.md`
+   - This outlines the technical approach and development roadmap
+
+3. **Implementation Progress**: `/workspace/projects/bga_cats_test/implementation_progress.md`
+   - This tracks what has been completed so far and what remains to be done
+
+4. **API Documentation** (read both files):
+   - `/workspace/projects/bga_cats_test/api_docs/bga_documentation.md`
+   - `/workspace/projects/bga_cats_test/api_docs/bga_guide.md`
+   - These contain Board Game Arena platform-specific documentation and guidelines
+
+**Art Assets Available**: The `/workspace/projects/bga_cats_test/herding_cats_art/` folder contains the following game artwork files:
+- `alleycat.jpeg` - Alley cat card artwork
+- `animalcontrol.jpeg` - Animal control card artwork
+- `cardback.jpeg` - Card back design
+- `catnip.jpeg` - Catnip card artwork
+- `imposter.jpeg` - Imposter card artwork
+- `kitten.jpeg` - Kitten card artwork
+- `laserpointer.jpeg` - Laser pointer card artwork
+- `showcat.jpeg` - Show cat card artwork
+- `Thumbs.db` - Windows thumbnail cache file (can be ignored)
+
+After reading all these documents, please provide a summary of your understanding of the project and ask me what specific aspect of the game development I'd like you to help with next.
+
+## Development Workflow - IMPORTANT
+
+### How We Work with BGA Files
+
+We use a **deploy script workflow** to maintain version control while developing for BGA:
+
+1. **BGA files mount at:** `~/BGA_mount` (OUTSIDE the git repository)
+2. **We work in:** `src/` directory (INSIDE the git repository, fully version controlled)
+3. **To deploy:** Run `./deploy.sh` to sync `src/` → `~/BGA_mount`
+
+### File Structure
+```
+/Users/david/git/ai-sandbox/projects/bga_cats_test/
+├── src/                    # ← WORK HERE (version controlled)
+│   ├── herdingcats.js
+│   ├── herdingcats.css
+│   ├── dbmodel.sql
+│   ├── modules/
+│   └── img/
+├── mount_bga.sh           # Mounts BGA to ~/BGA_mount
+├── unmount_bga.sh         # Unmounts BGA
+├── pull.sh                # Syncs BGA → src/ (initial import)
+├── deploy.sh              # Syncs src/ → BGA (for testing)
+└── sync_status.sh         # Shows differences
+
+~/BGA_mount/               # ← BGA MOUNT POINT (outside repo)
+└── [BGA game files]       # Don't edit directly!
+```
+
+### Key Rules for Claude
+
+1. **ALWAYS edit files in the `src/` directory**, never in `~/BGA_mount`
+2. **The `src/` directory is version controlled** - all changes are tracked in git
+3. **To test changes on BGA**, we run `./deploy.sh` to sync to the mount
+4. **The mount at `~/BGA_mount` is temporary** - it's only active when mounted
+5. **Initial setup**: Use `./pull.sh` to import existing BGA files to `src/`
+
+### Workflow Commands
+- `./mount_bga.sh` - Mount BGA files (required before pull/deploy)
+- `./pull.sh` - Import from BGA to src/ (one-time setup)
+- `./deploy.sh` - Deploy src/ to BGA for testing
+- `./deploy.sh --watch` - Auto-deploy on file changes
+- `./sync_status.sh` - Check what's different
+- `./unmount_bga.sh` - Unmount when done
+
+This workflow ensures all game code stays in version control while still being able to test on BGA Studio.
+
+## Accessing Board Game Arena Studio
+
+### Login Instructions
+
+To test the game on BGA Studio:
+
+1. **Navigate to the game table URL:**
+   - URL: `https://studio.boardgamearena.com/1/herdingcats?table=762633`
+   - Or go to any BGA Studio game table link provided
+
+2. **Login with the test account:**
+   - Username: `PaidiaGames0`
+   - Password: Found in the `.env` file in the project root
+   - Note: The `.env` file contains sensitive credentials and is not tracked in git
+
+3. **Switching between players:**
+   - Click the red &quot;&gt;&quot; arrow (appears as &quot;see more&quot;) next to a player's name
+   - This opens that player's view in a new tab
+   - Useful for testing multiplayer functionality from different perspectives
+   - You can also access a spectator view if available
+
+4. **Game Interface Features:**
+   - The active player's tab shows &quot;◥&quot; in the title
+   - &quot;It's your turn!&quot; notification appears for the active player
+   - Developer tools are available in the left sidebar (database access, logs, save/restore states)
+
+## Playwright Testing Guide
+
+### IMPORTANT: Playwright Version
+**Always use the regular `mcp__playwright__` tools, NOT the `mcp__playwright-ext__` version.**
+The regular playwright tools are more stable for BGA Studio testing.
+
+### Examining Game Cards
+
+1. **Card Elements Structure:**
+   - Cards in hand are stored as divs with IDs like `hc_current_hand_item_100`, `hc_current_hand_item_101`, etc.
+   - Each card has a background image that identifies its type (e.g., `kitten.jpeg`, `catnip.jpeg`)
+   - Cards are positioned using inline styles with `top` and `left` properties
+
+2. **Finding Cards via JavaScript:**
+   ```javascript
+   // Get all cards and their types
+   const cards = [];
+   for (let i = 100; i &lt;= 106; i++) {
+     const card = document.getElementById(`hc_current_hand_item_${i}`);
+     if (card) {
+       const bgImage = window.getComputedStyle(card).backgroundImage;
+       cards.push({
+         id: card.id,
+         type: bgImage.match(/\/([^\/]+)\.jpeg/)?.[1] // Extract card type from image URL
+       });
+     }
+   }
+   ```
+
+3. **Interacting with Cards:**
+   - Clicking a card triggers a declaration dialog
+   - The dialog shows buttons for each card type (Kitten, Show Cat, Alley Cat, Catnip, Animal Control, Laser Pointer)
+   - After selecting a card and declaration type, the game processes the move
+
+4. **Game State Information:**
+   - Access game state via `window.gameui` object
+   - `window.gameui.playerHand.items` contains the current player's hand
+   - Card types are numbered: 1=Kitten, 2=Show Cat, 3=Alley Cat, 4=Catnip, 5=Animal Control, 6=Laser Pointer
+
+5. **Monitoring Game Flow:**
+   - Console logs show state transitions (e.g., &quot;Entering state: awaitDeclaration&quot;)
+   - Network requests in Input/Output section show game actions
+   - Game notifications appear for actions like &quot;cardPlayed&quot; and &quot;herdUpdate&quot;</file>
   <file path="sync_status.sh" type="sh">#!/bin/bash
 
 # Sync status script - Check differences between src/ and BGA mount
@@ -5009,80 +4857,6 @@ studio.boardgamearena.com</file>
 - Substitution templates: if a log string uses `${player_name}` etc., provide those keys in notification args. Otherwise you’ll see “missing substitution argument”.
 - One‑way deploy: `./deploy.sh --watch` syncs from `src/` → `~/BGA_mount` only; changes on the mount are overwritten.
 </file>
-  <file path="modules/HCRules.php" type="php">&lt;?php
-/**
- * Modules - rules helpers and constants mapping
- */
-class HCRules {
-
-    // Toggle the Laser Pointer buff: on truthful intercept, put Laser into herd instead of discard
-    public static $BUFF_LASER_TO_HERD = true;
-
-    public static $CARD_NAMES = array(
-        HC_TYPE_KITTEN =&gt; 'Kitten',
-        HC_TYPE_SHOWCAT =&gt; 'Show Cat',
-        HC_TYPE_ALLEY =&gt; 'Alley Cat',
-        HC_TYPE_CATNIP =&gt; 'Catnip',
-        HC_TYPE_ANIMAL =&gt; 'Animal Control',
-        HC_TYPE_LASER =&gt; 'Laser Pointer',
-    );
-
-    // Base values at scoring
-    public static $CARD_VALUES = array(
-        HC_TYPE_KITTEN =&gt; 2,
-        HC_TYPE_SHOWCAT =&gt; 5, // may become 7 if any kitten present
-        HC_TYPE_ALLEY =&gt; 1,
-        HC_TYPE_CATNIP =&gt; 1,
-        HC_TYPE_ANIMAL =&gt; 0,
-        HC_TYPE_LASER =&gt; 0,
-    );
-
-    public static function getCardName($type) {
-        return self::$CARD_NAMES[$type];
-    }
-
-    public static function getTargetZoneForDeclared($type) {
-        if ($type == HC_TYPE_ALLEY || $type == HC_TYPE_CATNIP) return HC_TGT_HAND;
-        if ($type == HC_TYPE_ANIMAL) return HC_TGT_HERD;
-        return HC_TGT_NONE;
-    }
-
-    public static function declaredToText($type) {
-        return self::getCardName($type);
-    }
-
-    public static function faceValueForShowCat($hasKitten) {
-        return $hasKitten ? 7 : 5;
-    }
-
-    // Utility: compute hand index list from cards ordered by card_location_arg
-    public static function handIndexMap($cards) {
-        // returns map index(1-based)-&gt;card
-        $res = array();
-        $pos = 1;
-        foreach ($cards as $c) {
-            $res[$pos] = $c;
-            $pos++;
-        }
-        return $res;
-    }
-
-    public static function normalizeHandPositions($cards, $deck, $pid) {
-        $pos = 1;
-        foreach ($cards as $c) {
-            if ((int)$c['location_arg'] != $pos) {
-                $deck-&gt;moveCard($c['id'], HC_LOC_HAND, $pid);
-                self::setCardPos($deck, $c['id'], $pos);
-            }
-            $pos++;
-        }
-    }
-
-    public static function setCardPos($deck, $card_id, $pos) {
-        $sql = &quot;UPDATE card SET card_location_arg=$pos WHERE card_id=$card_id&quot;;
-        $deck-&gt;DbQuery($sql);
-    }
-}</file>
   <file path="src/herdingcats_herdingcats.tpl" type="tpl">{OVERALL_GAME_HEADER}
 
 &lt;!-- 
@@ -5190,6 +4964,7 @@ class HCRules {
                 &lt;button class=&quot;hc_card_type_btn&quot; data-type=&quot;3&quot;&gt;Alley Cat&lt;/button&gt;
                 &lt;button class=&quot;hc_card_type_btn&quot; data-type=&quot;4&quot;&gt;Catnip&lt;/button&gt;
                 &lt;button class=&quot;hc_card_type_btn&quot; data-type=&quot;5&quot;&gt;Animal Control&lt;/button&gt;
+                &lt;button class=&quot;hc_card_type_btn&quot; data-type=&quot;6&quot;&gt;Laser Pointer&lt;/button&gt;
             &lt;/div&gt;
             &lt;button id=&quot;hc_cancel_declare&quot; class=&quot;hc_button hc_cancel_button&quot;&gt;Cancel&lt;/button&gt;
         &lt;/div&gt;
@@ -5212,8 +4987,7 @@ var jstpl_target_button = '&lt;button class=&quot;hc_target_btn&quot; data-targe
 var jstpl_challenge_prompt = '&lt;div class=&quot;hc_challenge_prompt&quot;&gt;Do you want to challenge ${player_name}\'s declaration of ${card_name}?&lt;/div&gt;';
 &lt;/script&gt;
 
-{OVERALL_GAME_FOOTER}
-</file>
+{OVERALL_GAME_FOOTER}</file>
   <file path="src/herdingcats.css" type="css">/**
  *------
  * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
@@ -5800,7 +5574,7 @@ var jstpl_challenge_prompt = '&lt;div class=&quot;hc_challenge_prompt&quot;&gt;D
 }
 
 </file>
-  <file path="src/herdingcats.view.php" type="php">&lt;?php
+  <file path="src/herdingcats.view.php" type="view.php">&lt;?php
 /**
  *------
  * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
@@ -5914,7 +5688,7 @@ class view_herdingcats_herdingcats extends game_view
         return $luminance &gt; 0.5 ? &quot;black&quot; : &quot;white&quot;;
     }
 }</file>
-  <file path="src/gameinfos.inc.php" type="php">&lt;?php
+  <file path="src/gameinfos.inc.php" type="inc.php">&lt;?php
 
 /*
  * From this file, you can edit the various meta-information of your game.
@@ -6035,7 +5809,7 @@ $gameinfos = [
     'enable_3d' =&gt; false,
 ];
 </file>
-  <file path="src/material.inc.php" type="php">&lt;?php
+  <file path="src/material.inc.php" type="inc.php">&lt;?php
 /**
  *------
  * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
@@ -8490,7 +8264,7 @@ namespace {
         
     }
 }</file>
-  <file path="src/herdingcats.action.php" type="php">&lt;?php
+  <file path="src/herdingcats.action.php" type="action.php">&lt;?php
 /**
  *------
  * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
@@ -8500,7 +8274,7 @@ namespace {
  * See http://en.boardgamearena.com/#!doc/Studio for more information.
  * -----
  * 
- * herdingcats.action.php 
+ * herdingcats.action.php
  *
  * HerdingCats main action entry point
  *
@@ -8597,8 +8371,7 @@ class action_herdingcats extends APP_GameAction
     {
         self::setAjaxMode();
         
-        // Make actor_id optional; server will derive from pending action if omitted
-        $actor_id = self::getArg(&quot;actor_id&quot;, AT_posint, false);
+        $actor_id = self::getArg(&quot;actor_id&quot;, AT_posint, true);
         
         // Check action is valid
         $this-&gt;game-&gt;checkAction('actChallenge');
@@ -8825,7 +8598,7 @@ class action_herdingcats extends APP_GameAction
 }
 </file>
   <file path="src/gameoptions.json" type="json">{}</file>
-  <file path="src/states.inc.php" type="php">&lt;?php
+  <file path="src/states.inc.php" type="inc.php">&lt;?php
 /**
  *------
  * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
@@ -9405,19 +9178,21 @@ function (dojo, declare) {
         onEnteringState_challengeWindow: function(args) {
             // Show challenge options for eligible players
             // Cache declared data so preview persists across re-renders
-            if (args &amp;&amp; args.declared_card) {
-                this.currentDeclaredType = args.declared_card;
-            }
-            if (args &amp;&amp; args.actor_id) {
-                this.currentActorId = parseInt(args.actor_id);
-            }
-            if (args &amp;&amp; args.acting_player_name) {
-                this.currentActorName = args.acting_player_name;
+            if (args) {
+                // Prefer numeric declared_type; fallback to declared_card
+                const dType = (args.declared_type !== undefined &amp;&amp; args.declared_type !== null)
+                    ? args.declared_type
+                    : args.declared_card;
+                if (dType !== undefined &amp;&amp; dType !== null) this.currentDeclaredType = dType;
+                // Accept either actor_name or acting_player_name
+                this.currentActorName = args.actor_name || args.acting_player_name || this.currentActorName;
             }
             this.updateActionPrompts('challengeWindow', args);
             // Ensure preview is rendered immediately
-            const dType = (args &amp;&amp; args.declared_card) ? args.declared_card : this.currentDeclaredType;
-            if (dType) this.renderDeclaredPreview(dType);
+            const previewType = (args &amp;&amp; (args.declared_type !== undefined || args.declared_card !== undefined))
+                ? (args.declared_type !== undefined ? args.declared_type : args.declared_card)
+                : this.currentDeclaredType;
+            if (previewType !== undefined &amp;&amp; previewType !== null) this.renderDeclaredPreview(previewType);
         },
 
         onEnteringState_selectTarget: function(args) {
@@ -9596,8 +9371,13 @@ function (dojo, declare) {
 
             // For challenge window, show a small declared preview to all players, using fallback when needed
             if (stateName === 'challengeWindow') {
-                const dTypePrev = (args &amp;&amp; args.declared_card) ? args.declared_card : this.currentDeclaredType;
-                if (dTypePrev) this.renderDeclaredPreview(dTypePrev);
+                let dTypePrev = null;
+                if (args) {
+                    if (args.declared_type !== undefined &amp;&amp; args.declared_type !== null) dTypePrev = args.declared_type;
+                    else if (args.declared_card !== undefined &amp;&amp; args.declared_card !== null) dTypePrev = args.declared_card;
+                }
+                if (dTypePrev === null || dTypePrev === undefined) dTypePrev = this.currentDeclaredType;
+                if (dTypePrev !== null &amp;&amp; dTypePrev !== undefined) this.renderDeclaredPreview(dTypePrev);
             }
         },
 
@@ -9611,9 +9391,11 @@ function (dojo, declare) {
                 prev = dojo.create('div', { id: prevId, style: 'margin-top:8px; display:flex; align-items:center; gap:8px;' }, promptsDiv);
                 const card = dojo.create('div', { className: 'hc_card hc_face_down', style: 'width:36px;height:48px;border-width:1px;background-image:url('+ (typeof g_gamethemeurl!=='undefined'? g_gamethemeurl : '') + 'img/herding_cats_art/cardback.jpeg);background-size:cover;background-position:center;' }, prev);
                 // background-image is set by CSS class hc_face_down
-                dojo.create('span', { innerHTML: dojo.string.substitute(_('Declared as: ${type}'), { type: this.cardTypeNames[declaredType] }) }, prev);
+                const label = (this.cardTypeNames &amp;&amp; this.cardTypeNames[declaredType]) ? this.cardTypeNames[declaredType] : declaredType;
+                dojo.create('span', { innerHTML: dojo.string.substitute(_('Declared as: ${type}'), { type: label }) }, prev);
             } else {
-                prev.querySelector('span').innerHTML = dojo.string.substitute(_('Declared as: ${type}'), { type: this.cardTypeNames[declaredType] });
+                const label = (this.cardTypeNames &amp;&amp; this.cardTypeNames[declaredType]) ? this.cardTypeNames[declaredType] : declaredType;
+                prev.querySelector('span').innerHTML = dojo.string.substitute(_('Declared as: ${type}'), { type: label });
             }
         },
 
@@ -9805,7 +9587,10 @@ function (dojo, declare) {
 
         onChallenge: function() {
             // Get the actor_id from game state args if available
-            let actorId = this.currentActorId || (this.gamedatas.gamestate &amp;&amp; this.gamedatas.gamestate.args &amp;&amp; this.gamedatas.gamestate.args.actor_id);
+            let actorId = null;
+            if (this.gamedatas.gamestate &amp;&amp; this.gamedatas.gamestate.args &amp;&amp; this.gamedatas.gamestate.args.actor_id) {
+                actorId = this.gamedatas.gamestate.args.actor_id;
+            }
             
             const params = { lock: true };
             if (actorId) {
@@ -9986,25 +9771,38 @@ function (dojo, declare) {
         notif_challengeResult: async function( args )
         {
             console.log( 'notif_challengeResult', args );
-            
-            const wasBluffing = args.was_bluffing;
-            const actualType = args.actual_card_type;
-            const declaredType = args.declared_type;
-            
+
+            // Accept both legacy and structured keys
+            const wasBluffing = (args.was_bluffing !== undefined) ? args.was_bluffing : args.bluffing;
             const playerName = args.player_name || _('Player');
+
+            // Determine declared and actual labels (prefer numeric types → mapped names; fallback to provided strings)
+            const declaredType = (args.declared_type !== undefined &amp;&amp; args.declared_type !== null)
+                ? args.declared_type : args.declared_card;
+            const actualType = (args.actual_card_type !== undefined &amp;&amp; args.actual_card_type !== null)
+                ? args.actual_card_type : args.actual_card;
+
+            const typeLabel = (t) =&gt; {
+                if (t === undefined || t === null) return _('unknown');
+                // Numeric id
+                if (typeof t === 'number' || /^[0-9]+$/.test(String(t))) {
+                    const key = parseInt(t);
+                    return (this.cardTypeNames &amp;&amp; this.cardTypeNames[key]) ? this.cardTypeNames[key] : _('unknown');
+                }
+                // String label from server
+                return t;
+            };
+
             if (wasBluffing) {
-                const actualLabel = actualType ? this.cardTypeNames[actualType] : _('unknown');
-                const declaredLabel = declaredType ? this.cardTypeNames[declaredType] : _('unknown');
                 this.showMessage(dojo.string.substitute(_('${player} was bluffing! Card was ${actual} not ${declared}'), {
                     player: playerName,
-                    actual: actualLabel,
-                    declared: declaredLabel
+                    actual: typeLabel(actualType),
+                    declared: typeLabel(declaredType)
                 }), 'info');
             } else {
-                const declaredLabel = declaredType ? this.cardTypeNames[declaredType] : _('unknown');
                 this.showMessage(dojo.string.substitute(_('${player} was truthful! Card was indeed ${declared}'), {
                     player: playerName,
-                    declared: declaredLabel
+                    declared: typeLabel(declaredType)
                 }), 'info');
             }
         },
@@ -10136,7 +9934,7 @@ function (dojo, declare) {
    });             
 });
 </file>
-  <file path="src/herdingcats.game.php" type="php">&lt;?php
+  <file path="src/herdingcats.game.php" type="game.php">&lt;?php
 /**
  *------
  * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
@@ -11213,9 +11011,8 @@ class HerdingCats extends Table
         // Store the action ID for later retrieval
         self::setGameStateValue('current_action_id', $action_id);
         
-        // Move card from hand to LIMBO until challenges/intercepts resolve
-        // (prevents premature herd placement when bluff is caught)
-        $this-&gt;cards-&gt;moveCard($card_id, CARD_LOCATION_LIMBO, $player_id);
+        // Move card from hand to herd (face down for now)
+        $this-&gt;cards-&gt;moveCard($card_id, CARD_LOCATION_HERD_DOWN, $player_id);
         
         // Notify all players that a card was played
         self::notifyAllPlayers('cardPlayed', 
@@ -11230,7 +11027,16 @@ class HerdingCats extends Table
             ]
         );
         
-        // Do NOT add to herd yet; herd placement happens after resolution (state 90)
+        // Update herd display for the player
+        self::notifyAllPlayers('herdUpdate',
+            clienttranslate('Card added to herd'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getActivePlayerName(),
+                'card' =&gt; ['id' =&gt; $card_id, 'type' =&gt; $card['type'], 'type_arg' =&gt; $card['type_arg']],
+                'visible' =&gt; false // Keep cards face-down for now
+            ]
+        );
         
         // Notify hand count update
         $this-&gt;notifyHandCounts();
@@ -11243,27 +11049,22 @@ class HerdingCats extends Table
         }
     }
 
-    function actChallenge($actor_id = null)
+    function actChallenge($actor_id)
     {
         self::checkAction('actChallenge');
         // In MULTIPLE_ACTIVE, challenger is the current player, not the turn's active player
         $player_id = self::getCurrentPlayerId();
-
-        // Bind challenge target robustly from pending action if omitted or stale
-        $pending = $this-&gt;pullPending();
-        if (!$pending || !isset($pending['actor_player_id'])) {
-            throw new feException(&quot;No pending declaration to challenge&quot;);
-        }
-        $pending_actor_id = intval($pending['actor_player_id']);
-        if ($actor_id === null || intval($actor_id) &lt;= 0 || intval($actor_id) !== $pending_actor_id) {
-            $actor_id = $pending_actor_id;
-        }
-
+        
         // Validate player can challenge
         if (!$this-&gt;canPlayerChallenge($player_id, $actor_id)) {
             throw new feException(&quot;Cannot challenge this action&quot;);
         }
-
+        
+        $pending = $this-&gt;pullPending();
+        if (!$pending || $pending['actor_player_id'] != $actor_id) {
+            throw new feException(&quot;Invalid challenge target&quot;);
+        }
+        
         // Add player to challengers list (be robust: pending may already be decoded)
         if (!isset($pending['challengers']) || empty($pending['challengers'])) {
             $challengers = [];
@@ -11274,25 +11075,23 @@ class HerdingCats extends Table
         }
         if (!in_array($player_id, $challengers)) {
             $challengers[] = $player_id;
-
+            
             // Update pending action
             $sql = &quot;UPDATE pending_action SET challengers = '&quot; . addslashes(json_encode($challengers)) . &quot;' WHERE action_id = &quot; . $pending['action_id'];
             self::DbQuery($sql);
         }
-
-        // Notify challenge declared (align with client notif handler name)
-        self::notifyAllPlayers('challenge',
+        
+        // Notify challenge declared
+        self::notifyAllPlayers('challengeDeclared',
             clienttranslate('${player_name} challenges the declaration'),
             [
                 'player_id' =&gt; $player_id,
                 'player_name' =&gt; self::getPlayerNameById($player_id),
-                'challenger_name' =&gt; self::getPlayerNameById($player_id),
-                'challenged_name' =&gt; self::getPlayerNameById($actor_id),
                 'actor_id' =&gt; $actor_id,
                 'actor_name' =&gt; self::getPlayerNameById($actor_id)
             ]
         );
-
+        
         // Immediately jump to resolve challenge
         $this-&gt;gamestate-&gt;setPlayerNonMultiactive($player_id, 'challenged');
     }
@@ -11330,16 +11129,11 @@ class HerdingCats extends Table
         $actor_cards = $this-&gt;getPlayerHandCards($actor_id);
         $actor_cards = array_values($actor_cards);
         
-        // Client sends 1-based slot numbers; accept 0-based as a fallback
-        $idx = intval($card_index);
-        if ($idx &gt;= 1) {
-            $idx = $idx - 1; // convert to 0-based
-        }
-        if ($idx &lt; 0 || $idx &gt;= count($actor_cards)) {
+        if ($card_index &lt; 0 || $card_index &gt;= count($actor_cards)) {
             throw new feException(&quot;Invalid card index&quot;);
         }
         
-        $selected_card = $actor_cards[$idx];
+        $selected_card = $actor_cards[$card_index];
         
         // Apply bluff penalty - discard both cards
         $limbo_card = $this-&gt;cards-&gt;getCard($pending['played_card_id']);
@@ -11380,16 +11174,11 @@ class HerdingCats extends Table
         $challenger_cards = $this-&gt;getPlayerHandCards($challenger_id);
         $challenger_cards = array_values($challenger_cards);
         
-        // Client sends 1-based slot numbers; accept 0-based as a fallback
-        $idx = intval($card_index);
-        if ($idx &gt;= 1) {
-            $idx = $idx - 1; // convert to 0-based
-        }
-        if ($idx &lt; 0 || $idx &gt;= count($challenger_cards)) {
+        if ($card_index &lt; 0 || $card_index &gt;= count($challenger_cards)) {
             throw new feException(&quot;Invalid card index&quot;);
         }
         
-        $selected_card = $challenger_cards[$idx];
+        $selected_card = $challenger_cards[$card_index];
         
         // Apply truth penalty - challenger discards
         $this-&gt;cards-&gt;moveCard($selected_card['id'], CARD_LOCATION_DISCARD, $challenger_id);
@@ -11658,25 +11447,31 @@ class HerdingCats extends Table
 
     function argChallengeWindow()
     {
-        // SIMPLIFIED: Just allow all other players to challenge
+        // Build challenge window args from actual pending action data
         $active_player = self::getActivePlayerId();
         $players = self::loadPlayersBasicInfos();
         $eligible = [];
-        
+
         foreach ($players as $player_id =&gt; $player_info) {
             if ($player_id != $active_player) {
                 $eligible[] = intval($player_id);
             }
         }
 
-        // Provide declared type from the current pending action if available
         $pending = $this-&gt;pullPending();
-        $declared_type = $pending ? intval($pending['declared_identity']) : 0;
+        $declared_type = null;
+        if ($pending &amp;&amp; isset($pending['declared_identity'])) {
+            // Ensure numeric int for client mapping
+            $declared_type = intval($pending['declared_identity']);
+        }
+
         return [
             'eligible' =&gt; $eligible,
             'eligible_challengers' =&gt; $eligible,
             'can_challenge' =&gt; $eligible,
             'actor_id' =&gt; $active_player,
+            // Provide both keys for client robustness
+            'declared_type' =&gt; $declared_type,
             'declared_card' =&gt; $declared_type,
             'actor_name' =&gt; self::getActivePlayerName()
         ];
@@ -11696,9 +11491,6 @@ class HerdingCats extends Table
             'pending_action' =&gt; $pending,
             'actor_id' =&gt; $actor_id,
             'actor_name' =&gt; self::getPlayerNameById($actor_id),
-            // Provide the generic key the client expects
-            'hand_count' =&gt; count($actor_cards),
-            // Keep a verbose key for debugging/consumers if needed
             'actor_hand_count' =&gt; count($actor_cards)
         ];
     }
@@ -11925,20 +11717,11 @@ class HerdingCats extends Table
         }
         
         // Get card details
-        $played_id = intval($pending['played_card_id']);
-        $card = $this-&gt;cards-&gt;getCard($played_id);
-        $declared_type = intval($pending['declared_identity']);
-        $actual_type = intval($card['type']);
+        $card = $this-&gt;cards-&gt;getCard($pending['played_card_id']);
+        $declared_type = $pending['declared_identity'];
+        $actual_type = $card['type'];
         $actor_id = $pending['actor_player_id'];
         $challengers = isset($pending['challengers']) ? $pending['challengers'] : [];
-
-        // Debug instrumentation to aid Studio log inspection
-        error_log('HC stResolveChallenge: action_id=' . self::getGameStateValue('current_action_id')
-            . ' actor=' . $actor_id
-            . ' played_id=' . $played_id
-            . ' declared=' . $declared_type
-            . ' actual=' . $actual_type
-            . ' challengers=' . json_encode($challengers));
         
         if (empty($challengers)) {
             // No challenges: route depending on targeting/selection
@@ -11955,23 +11738,22 @@ class HerdingCats extends Table
         }
         
         // Check if declaration was truthful
-        $was_bluffing = ($declared_type !== $actual_type);
+        $was_bluffing = ($declared_type != $actual_type);
         
         if ($was_bluffing) {
             // Player was bluffing - challenger wins
-            // Send both human-readable labels and machine-friendly fields expected by client
-            $this-&gt;notifyAllPlayers(
-                'challengeResult',
-                clienttranslate('Challenge successful! ${player_name} was bluffing about ${declared_card}.'),
+            $this-&gt;notifyAllPlayers('challengeResult', 
+                clienttranslate('Challenge successful! ${player_name} was bluffing about ${declared_card}.'), 
                 [
-                    // Human-readable (for server log)
                     'player_name' =&gt; $this-&gt;getPlayerName($actor_id),
+                    // Legacy/text fields
                     'declared_card' =&gt; $this-&gt;getCardTypeName($declared_type),
                     'actual_card' =&gt; $this-&gt;getCardTypeName($actual_type),
-                    // Machine-readable (for JS client handlers)
-                    'declared_type' =&gt; $declared_type,
-                    'actual_card_type' =&gt; $actual_type,
-                    'was_bluffing' =&gt; true
+                    'bluffing' =&gt; true,
+                    // Structured fields expected by client
+                    'was_bluffing' =&gt; true,
+                    'declared_type' =&gt; intval($declared_type),
+                    'actual_card_type' =&gt; intval($actual_type)
                 ]
             );
             
@@ -11981,21 +11763,20 @@ class HerdingCats extends Table
             $this-&gt;gamestate-&gt;nextState('bluffCaught');
         } else {
             // Player was truthful - challengers pay penalty
-            // Send both human-readable labels and machine-friendly fields expected by client
-            $this-&gt;notifyAllPlayers(
-                'challengeResult',
-                clienttranslate('Challenge failed! ${player_name} was truthful about ${declared_card}.'),
+            $this-&gt;notifyAllPlayers('challengeResult', 
+                clienttranslate('Challenge failed! ${player_name} was truthful about ${declared_card}.'), 
                 [
-                    // Human-readable (for server log)
                     'player_name' =&gt; $this-&gt;getPlayerName($actor_id),
+                    // Legacy/text fields
                     'declared_card' =&gt; $this-&gt;getCardTypeName($declared_type),
-                    // Machine-readable (for JS client handlers)
-                    'declared_type' =&gt; $declared_type,
-                    'actual_card_type' =&gt; $actual_type,
-                    'was_bluffing' =&gt; false
+                    'bluffing' =&gt; false,
+                    // Structured fields expected by client
+                    'was_bluffing' =&gt; false,
+                    'declared_type' =&gt; intval($declared_type),
+                    'actual_card_type' =&gt; intval($actual_type)
                 ]
             );
-        
+            
             // Actor can choose to penalize one challenger
             $this-&gt;gamestate-&gt;changeActivePlayer($actor_id);
             $this-&gt;gamestate-&gt;nextState('challengeFailed');
@@ -12377,6 +12158,876 @@ class HerdingCats extends Table
     }    
 }
 </file>
+  <file path="src/bga-framework.d.ts" type="d.ts">type ElementOrId = Element | string;
+
+declare const define: Function;
+
+declare const ebg: {
+  core: {
+    gamegui: any;
+  }
+  counter: {
+    new (): Counter;
+  };
+  popindialog: {
+    new (): PopinDialog;
+  };
+};
+
+declare const dojo: Dojo;
+
+declare const gameui: GameGui;
+
+/**
+ * Global contains replay number in live game, it is set to undefined (i.e. not set) when it is not a replay mode, so consequentially the good check is typeof g_replayFrom != 'undefined' which returns true if the game is in replay mode during the game (the game is ongoing but the user clicked &quot;replay from this move&quot; in the log)
+ */
+declare const g_replayFrom: number | undefined;
+
+/**
+ * The URL to the root of the game files, for example to access dynamically to an image.
+ */
+declare const g_gamethemeurl: string;
+
+/**
+ * Returns true if the game is in archive mode after the game (the game has ended)
+ */
+declare const g_archive_mode: boolean;
+
+/**
+ * Returns an object if the game is in tutorial mode, or undefined otherwise. 
+ */
+declare const g_tutorialwritten: Object | undefined;
+
+/**
+ * Returns a translated sentence.
+ * 
+ * @param str english sentence
+ */
+declare function _(str: string): string;
+
+/**
+ * Get an HTML element using its &quot;id&quot; attribute. 
+ * @param text element id
+ */
+declare function $(text: ElementOrId): HTMLElement;
+
+/**
+ * Loads a versionned BGA game lib.
+ * 
+ * @param name the name of the lib, usually prefixed by `bga-`
+ * @param version the version, either taking the last available version `1.x` or a fixed version `1.0.0`
+ */
+declare function getLibUrl(name: string, version: string): string;
+
+interface Gamestate {
+    active_player?: string;
+    args: any;
+    id: string;
+    name: string;
+    type: string;
+    description?: string;
+    descriptionmyturn?: string;
+    private_state?: Gamestate;
+}
+
+interface Gamedatas&lt;P = Player&gt; {
+  gamestate: Gamestate;
+  gamestates: { [gamestateId: number]: Gamestate };
+  playerorder: (string | number)[];
+  players: { [playerId: number]: P };
+}
+
+interface Player {
+  beginner: boolean;
+  color: string;
+  color_back: any | null;
+  eliminated: number;
+  id: string;
+  is_ai: string;
+  name: string;
+  score: string;
+  zombie: number;
+}
+
+declare class GameNotifQueue {
+  next_log_id: number;
+
+  /**
+   * Set the notification deinfed by notif_type as &quot;synchronous&quot;
+   * @param notif_type - the type of notification
+   * @param duration - the duration of notification wait in milliseconds
+   * If &quot;duration&quot; is specified: set a simple timer for it (milliseconds)
+   * If &quot;duration&quot; is not specified, the notification handler MUST call &quot;setSynchronousDuration&quot;
+   */
+  setSynchronous(notif_type: string, duration?: number): void;
+  /**
+   * Set dynamically the duration of a synchronous notification
+   * MUST be called if your notification has not been associated with a duration in &quot;setSynchronous&quot;
+   * @param duration - how long to hold off till next notficiation received (milliseconds)
+   */
+  setSynchronousDuration(duration: number): void;
+
+  /**
+   * Ignore notification if predicate is true
+   * @param notif_type  - the type of notificatio
+   * @param predicate - the function that if returned true will make framework not dispatch notification.
+   * NOTE: this cannot be used for syncronious unbound notifications
+   */
+  setIgnoreNotificationCheck(notif_type: string, predicate: (notif: object) =&gt; boolean): void;
+}
+
+declare class StatusBar {
+  /**
+   * Set the title displayed on the status bar. Il will automatically apply styling on `${you}`, `${actplayer}`, or any variable passed in args (for example, entering state args).
+   * 
+   * @param {string} title the title to set
+   * @param {Object} args the optional args to use in format_string_recursive to format the title
+   */
+  setTitle(title: string, args?: any): void;
+
+  /**
+   * Add a button to the status bar.
+   * 
+   * @param {string} label the button text
+   * @param {Function} callback the function to trigger when clicked
+   * @param {Object} params the optional parameters, by default { color: 'primary', id: null, classes: '', destination: document.getElementById('generalactions'), title: undefined, disabled: false, tooltip: undefined, confirm: undefined, autoclick: false }. 
+   *   `color` can be primary (default) (blue), secondary (gray), alert (red)
+   *   `id` is the id to set. If null/undefined, the button will not have an id, but you can still manipulate it by storing the reference to the DOM Element returned by the function
+   *   `classes` can be a string or an array, so `'disabled blinking'` and `['disabled', 'blinking']` are both possible.
+   *   `destination` the DOM Element to add the button to. If not specified, will add it to the status bar.
+   *   `title` plain text description of the label. Should be set when the button label is an icon, for accessibility
+   *   `disabled` boolean to make the button disabled. Will prevent the callback to be executed
+   *   `tooltip` the tooltip of the button
+   *   `confirm` the confirm message to display before triggering the callback, if set.
+   *   `autoclick` if the button should be auto clicked after a small delay (for Confirmation buttons).
+   * 
+   * @returns the button DOM element
+   */
+  addActionButton(label: string, callback: Function, params?: {
+    color?: 'primary' | 'secondary' | 'alert';
+    id?: string;
+    classes?: string | string[];
+    destination?: HTMLElement;
+    title?: string;
+    disabled?: boolean;
+    tooltip?: string;
+    confirm?: string | (() =&gt; string | undefined | null); 
+    autoclick?: boolean;
+  }): HTMLButtonElement;
+
+  /**
+   * Remove all buttons on the status bar
+   */
+  removeActionButtons(): void;
+}
+
+declare class Sounds {
+  /**
+   * Load a sound file to be used with play.
+   * 
+   * @param {string} id the id to be used by play
+   * @param {string} fileName the file name, without extension (there should be a .ogg and a .mp3 with that file name in the img folder). If unset, it will try with the id as file name.
+   */
+  load(id: string, fileName: string): void;
+
+  /**
+   * Play the sound with the given id.
+   * 
+   * @param {string} id the sound id
+   */
+  play(id: string): void;
+}
+
+declare class GameGui&lt;G = Gamedatas&gt; {
+  /**
+   * Return true if the game is in realtime. Note that having a distinct behavior in realtime and turn-based should be exceptional.
+   */
+  bRealtime: boolean;  
+
+  /**
+   * Returns true during replay/archive mode if animations should be skipped.
+   * 
+   * @deprecated use this.bgaAnimationsActive() instead
+   */
+  instantaneousMode: boolean;
+
+  /**
+   * Contains the initial set of data to init the game, created at game start or by game refresh (F5).
+   */
+  gamedatas: G;
+
+  /**
+   * id of the player who is looking at the game. The player may not be part of the game (i.e. spectator) 
+   */
+  player_id: number;
+
+  /**
+   * Flag set to true if the user at the table is a spectator (not a player). 
+   */  
+  isSpectator: boolean;
+
+  /**
+   * Boolean indicating that we are in client state 
+   */  
+  on_client_state: boolean;
+
+  /**
+   * The player panel score counters.
+   */
+  scoreCtrl: {[player_id: number]: Counter};
+
+  statusBar: StatusBar;
+  sounds: Sounds;
+
+  /**
+   * Setup the whole game GUI with datas from the game
+   */
+  setup(gamedatas: G): void;
+
+  /**
+   * This method is called each time we enter a new game state. You can use this method to perform some user interface changes at this moment. To access state arguments passed via calling php arg* method use args?.args. Typically you would do something only for active player, using this.isCurrentPlayerActive() check. It is also called (for the current game state only) when doing a browser refresh (after the setup method is called).
+   * 
+   * Warning: for MULTIPLE_ACTIVE_PLAYER states: the active players are NOT active yet so you must use onUpdateActionButtons to perform the client side operation which depends on a player active/inactive status. If you are doing initialization of some structures which do not depend on the active player, you can just replace (this.isCurrentPlayerActive()) with (!this.isSpectator) for the main switch in that method. 
+   * 
+   * @param {string} stateName the name of the state
+   * @param {Object} args an object containing the state args
+   */
+  onEnteringState(stateName: string, args: { args: {[key: string]: any} | null; }): void;
+
+  /**
+   * This method is called each time we leave a game state. You can use this method to perform some user interface changes at this point (i.e. cleanup). 
+   * 
+   * @param {string} stateName the name of the state
+   */
+  onLeavingState(stateName: string): void;
+
+  /**
+   * In this method you can manage &quot;action buttons&quot; that are displayed in the action status bar and highlight active UI elements. 
+   * To access state arguments passed via calling php arg* method use args parameter. 
+   * 
+   * Note: args can be null! For game states and when you don't supply state args function - it is null.
+   * 
+   * This method is called when the active or multiactive player changes. In a classic ACTIVE_PLAYER state this method is called before the onEnteringState state. 
+   * In MULTIPLE_ACTIVE_PLAYER state it is called when a player &quot;active&quot; state changes, so it can be called multiple times during the state.
+   * 
+   * @param {string} stateName the name of the state
+   * @param {Object} args the state args
+   */
+  onUpdateActionButtons(stateName: string, args: {[key: string]: any} | null): void;
+
+  /**
+   * Client state is an override of a real server game state, useful in some situations where several steps  must be done on client side without any server interaction.
+   * Client state acts like a server game state. Real current server game state can be restored with &quot;restoreServerGameState&quot; method.
+   * 
+   * @param {string} stateName the name of the state
+   * @param {Object} args the state args
+   */
+  setClientState(stateName: string, args: {[key: string]: any}): void;
+
+  /**
+   * If you are in client state it will restore the current server state (cheap undo).
+   */
+  restoreServerGameState(): void;
+
+  /**
+   * Disable the standard &quot;move&quot; sound for this move (to replace it with your custom sound).
+   * To be added in a notification handler.
+   */
+  disableNextMoveSound(): void;
+
+
+  /**
+   * This function can be overridden in your game to manage some resizing on the client side when the browser window is resized. This function is also triggered at load time, so it can be used to adapt to the :viewport size at the start of the game too.
+   */
+  onScreenWidthChange(): void;
+
+  /**
+   * Returns the getBoundingClientRect ignoring the possible zoom factor linked to the autoscale.
+   * Same behaviour as getBoundingClientRect/dojo.position for old browser, but the result is different for browser using the new CSS property norm (Chrome 128+, Firefox mobile)
+   * 
+   * @param {*} obj element or id of element
+   * @returns the bounding client rect full size
+   */
+  getBoundingClientRectIgnoreZoom(obj: ElementOrId): DOMRect;
+
+  /**
+   * Returns true if the player on whose browser the code is running is currently active (it's his turn to play).
+   * 
+   * @returns {boolean} is current player active
+   */
+  isCurrentPlayerActive(): boolean;
+
+  /**
+   * Returns true if the player is currently active (it's his turn to play).
+   * 
+   * @param {number} player_id the player to check
+   * @returns {boolean} is specified player active
+   */
+  isPlayerActive(player_id: number): boolean;
+
+  /**
+   * Get the list of current active players ids
+   * @returns {number[]} the active player ids
+   */
+  getActivePlayers(): number[];
+
+  /**
+   * Return the id of the active player, or null if we are not in an ACTIVE_PLAYER type state. 
+   * @returns {number | null} the active player id
+   */
+  getActivePlayerId(): number | null;
+
+  /**
+   * Return the HTML code for a player name, colored and with optional background.
+   * Set params `replaceByYou: true` to write &quot;You&quot; in current player's language instead of the player's name.
+   * 
+   * @param {number} playerId the player id
+   * @param {Object} params the call parameters, by default { replaceByYou: false }.
+   * @return {string} the formatted player name
+   */
+  getFormattedPlayerName(playerId: number, params?: {
+    replaceByYou?: boolean;
+  }): string;
+
+  /**
+   * This function allows to update the current page title and turn description according to the game state arguments. 
+   * Note: this functional also will calls this.onUpdateActionButtons.
+   * 
+   * @deprecated If you just want to change the page title, use `this.statusBar.setTitle`
+   */
+  updatePageTitle(): void;
+
+  /**
+   * @deprecated use this.statusBar.addActionButton instead
+   */
+  addActionButton(id: string, label: string, method: string | Function, destination?: string, blinking?: boolean, color?: string): void;
+
+  /**
+   * @deprecated use this.statusBar.removeActionButtons instead
+   */
+  removeActionButtons(): void;
+
+  /**
+   * @deprecated use the.bgaPerformAction
+   */
+  ajaxcall(url: string, args: object, bind: GameGui, resultHandler: (result: any) =&gt; void, allHandler?: (err: any, result?: any) =&gt; void): void;
+
+  /**
+   * Check if player can do the specified action by taking into account:
+   *  - if interface is locked it will return false and show message &quot;An action is already in progress&quot;, unless nomessage set to true
+   *  - if player is not active it will return false and show message &quot;This is not your turn&quot;, unless nomessage set to true
+   *  - if action is not in list of possible actions (defined by &quot;possibleaction&quot; in current game state) it will return false and show &quot;This move is not authorized now&quot; error (unconditionally).
+   *  - otherwise returns true
+   * 
+   * @param {string} action the action to test
+   * @param {boolean} nomessage if we want a silent check. default false.
+   * @returns {boolean} the action is possible
+   */
+  checkAction(action: string, nomessage?: boolean): boolean;
+
+  /**
+   * This is independent of the player being active, so can be used instead of this.checkAction(). This is particularly useful for multiplayer states when the player is not active in a 'player may like to change their mind' scenario. Unlike this.checkAction, this function does NOT take interface locking into account
+   * if action is not in list of possible actions (defined by &quot;possibleaction&quot; in current game state) it will return false and show &quot;This move is not authorized now&quot; error (unconditionally).
+   * otherwise returns true
+   * 
+   * @param {string} action the action to test
+   * @returns {boolean} the action is possible
+   */
+  checkPossibleActions(action: string): boolean;
+
+  /**
+   * Shows predefined user error that move is unauthorized now.
+   */
+  showMoveUnauthorized(): void;
+
+  /**
+   * Tell the interface to not preload a specific image in your img root directory. 
+   * @param {string} image the filename
+   */
+  dontPreloadImage(image: string): void;
+
+  /**
+   * Ensure some specific images are loaded.
+   */
+  ensureSpecificGameImageLoading( imagelist: string[]): void;
+
+  /**
+   * Function to know if animations should be played.
+   * Animations should not be played in instantaneousMode, or if the tab is not displayed in the browser.
+   * 
+   * @returns {boolean} if animations should be played
+   */
+  bgaAnimationsActive(): boolean;
+
+  /**
+   * Return a Promise that resolves at the end of a given number of ms.
+   * If animations are not active, resolve instantaneously.
+   * 
+   * @param {number} delay the time to wait, in milliseconds
+   * @returns a promise when the timer ends
+   */
+  wait(delay: number): Promise&lt;any&gt;;
+
+  /**
+   * Auto-detect all notifications declared on the game object (functions starting with `notif_`)
+   * and register them with dojo.subscribe.
+   * Registered notifications will be synchronous and will have a minimum duration (if animations are active, by default 500ms with text and 1ms without).
+   * If the notification function returns a Promise, the notification will end when the promise AND the minimum durations are over.
+   * In case of a notification function returning a Promise, the dev is rsponsible to make it resolve instantaneously if animations are not active.
+   * 
+   * Example of usage: `setupNotifications() { this.bgaSetupPromiseNotifications(); }`
+   * And declaration of a notif will just be :
+   * `notif_playedCard: function(args) { this.getPlayerTable(args.playerId).playCard(args.card); }`
+   * 
+   * @param {Object} params the call parameters, by default { prefix: 'notif_', minDuration: 500, minDurationNoText: 1, logger: null, ignoreNotifications: [], onStart: undefined, onEnd: undefined, }.
+   */
+  bgaSetupPromiseNotifications(params?: {
+    prefix?: string;
+    minDuration?: number;
+    minDurationNoText?: number;
+    handlers?: Object[];
+    logger?: Function;
+    ignoreNotifications?: string[];
+    onStart?: (notifName: string, msg: string, args: any) =&gt; any;
+    onEnd?: (notifName: string, msg: string, args: any) =&gt; any;
+  }): void;
+
+  /**
+   * Play a dojo animation and returns a promise resolved when it ends.
+   * 
+   * @param {Object} anim the dojo animation.
+   */
+  bgaPlayDojoAnimation(anim: DojoAnimation): Promise&lt;any&gt;;
+
+  /**
+   * A callback that can be set by games to know when a user preference changes
+   */
+  onGameUserPreferenceChanged?: (pref_id: number, pref_value: number) =&gt; void;
+
+  /**
+   * Get a game-specific user preference value.
+   */
+  getGameUserPreference(pref_id: number): number;
+
+  /**
+   * Method to programmatically change a game-specific user preference.
+   */
+  setGameUserPreference(pref_id: number, value: number): void;
+
+  /**
+   * Trigger an ajax call for a game action.
+   * 
+   * @param {string} action the action name
+   * @param {Object} args the action arguments
+   * @param {Object} params the call parameters, by default { lock: true, checkAction: true, checkPossibleActions: false }. Must be overriden to disable interface lock, or to disable checkAction.
+   * @returns Promise of the ajax call, or undefined if there is no call (prevented by checkAction/checkPossibleActions)
+   */
+  bgaPerformAction(action: string, args?: any, params?: {
+    lock?: boolean;
+    checkAction?: boolean;
+    checkPossibleActions?: boolean; 
+  }): Promise&lt;any&gt;;
+
+  /**
+   * Return the Game Area div (for all displayed game components).
+   * 
+   * @returns the Game Area div element
+   */
+  getGameAreaElement(): HTMLDivElement;
+
+  /**
+   * Return the div on the player board where the dev can add counters and other game specific indicators.
+   * 
+   * @param {number} playerId the player id
+   * @returns the div element for game specific content on player panels
+   */
+  getPlayerPanelElement(playerId: number): HTMLDivElement;
+
+  /**
+   * Updates the log/args before display, for example for formatting text notification with icons.
+   * 
+   * @param log the log text
+   * @param args the log args
+   * @returns {Object} you must `return { log, args };`
+   */
+  bgaFormatText(log: string, args: any): { log: string; args: any; };
+
+  /**
+   * Allow the games to declare a `bgaFormatText` function that will be called at the beginning of each 
+   * format_string_recursive call. 
+   * 
+   * @deprecated use bgaFormatText instead
+   */
+  format_string_recursive(log: string, args: any): string;
+
+  /**
+   * Show an information message during few seconds on page head
+   * @param {string} msg the string to display. It should be translated.
+   * @param {string} type &quot;info&quot;, &quot;error&quot;, &quot;only_to_log&quot; If set to &quot;info&quot;, the message will be an informative message on a white background. If set to &quot;error&quot;, the message will be an error message on a red background and it will be added to log. If set to &quot;only_to_log&quot;, the message will be added to the game log but will not popup at the top of the screen.
+   */
+  showMessage(msg: string, type: 'info' | 'error' | 'only_to_log'): void;
+
+  /**
+   * substitute variables in a string
+   * @param {string} string the string
+   * @param {Object} args the substitutions
+   * @returns {string} the updated string
+   */
+  format_string( string: string, args: {[key: string]: string}): string;
+
+
+  /**
+   * Places mobile_obj on target_obj, set the absolute positions and centers the mobile_obj on target_obj, effect is immediate 
+   * This is not really an animation, but placeOnObject is frequently used before starting an animation. 
+   * 
+   * Note: if it does not work check that:
+   *  1°) mobile_obj has a position:absolute or position:relative
+   *  2°) a fixed mobile_obj parent has a position absolute or relative
+   */
+  placeOnObject(mobile_obj: ElementOrId, target_obj: ElementOrId): void;
+  
+  /**
+   * Place an object on another one with a delta (in px).
+   * 
+   * Note: if it does not work check that:
+   *  1°) mobile_obj has a position:absolute or position:relative
+   *  2°) a fixed mobile_obj parent has a position absolute or relative
+   */
+  placeOnObjectPos(mobile_obj: ElementOrId, target_obj: ElementOrId, target_x: number, target_y: number): void;
+        
+  /**
+   * Attach mobile_obj to a new parent, keeping its absolute position in the screen constant.
+   * !! mobile_obj is no longer valid after that (a new corresponding mobile_obj is returned)
+   */
+  attachToNewParent( mobile_obj: ElementOrId, new_parent: ElementOrId): HTMLElement;
+               
+  /**
+   * Return an animation that is moving (slide) a DOM object over another one
+   */
+  slideToObject(mobile_obj: ElementOrId, target_obj: ElementOrId, duration?: number, delay?: number): DojoAnimation;
+  
+  /**
+   * Return an animation that is moving (slide) a DOM object over another one at the given coordinates
+   */
+  slideToObjectPos(mobile_obj: ElementOrId, target_obj: ElementOrId, target_x: number, target_y: number, duration?: number, delay?: number): DojoAnimation;
+
+  /**
+   * Create a temporary object and slide it from a point to another one, then destroy it.
+   */
+  slideTemporaryObject(mobile_obj_html: string, mobile_obj_parent: ElementOrId, from: ElementOrId, to: ElementOrId, duration?: number, delay?: number): DojoAnimation;
+
+  /**
+   * Slide an existing object to a destination, then destroy it.
+   */
+  slideToObjectAndDestroy(mobile_obj: ElementOrId, target_obj: ElementOrId, duration?: number, delay?: number): DojoAnimation;
+
+  /**
+   * Destroy an existing node with a smooth fadeout.
+   */
+  fadeOutAndDestroy(node: ElementOrId, duration?: number, delay?: number): DojoAnimation;
+        
+  /**
+   * It starts the animation, and stored the rotation degree in the class, so next time you rotate object - it is additive.
+   * The animation is triggered instantly.
+   */
+  rotateTo(node: ElementOrId, degree: number): DojoAnimation;
+        
+  /**
+   * Rotate with no animation.
+   */
+  rotateInstantTo(node: ElementOrId, degree: number): void;
+
+  /**
+   * Add a simple text tooltip to the DOM node.
+   * Specify 'helpStringTranslated' to display some information about &quot;what is this game element?&quot;. 
+   * Specify 'actionStringTranslated' to display some information about &quot;what happens when I click on this element?&quot;. 
+   * Set one of them to '' if unused.
+   * 
+   * @param {string} id the object id to attach the tooltip to.
+   * @param {string} help the help message
+   * @param {string} action the action message
+   * @param {number} delay optional delay, in ms (default 400) 
+   */
+  addTooltip(nodeId: string, helpStringTranslated: string, actionStringTranslated: string, delay?: number): void;
+
+  /**
+   * Add an HTML tooltip to the DOM node.
+   * 
+   * @param {string} id the object id to attach the tooltip to.
+   * @param {string} html the html code of the message
+   * @param {number} delay optional delay, in ms (default 400) 
+   */
+  addTooltipHtml(nodeId: string, html: string, delay?: number): void;
+        
+  /**
+   * Same as addTooltip but for all elements of a given class.
+   */
+  addTooltipToClass(cssclass: string, helpStringTranslated: string, actionStringTranslated: string, delay?: number): void;
+  
+  /**
+   * Same as addTooltipHtml but for all elements of a given class.
+   */
+  addTooltipHtmlToClass( cssclass: string, html: string, delay?: number): void;
+
+  /**
+   * Remove a tooltip from the DOM node with given id. 
+   * 
+   * @param {string} id the object id to attach the tooltip to.
+   */
+  removeTooltip(nodeId: string): void;
+
+  /**
+   * When an important action with a lot of consequences is triggered by the player, you may want to propose a confirmation dialog. 
+   * 
+   * @param {string} text message will be shown to user, use _() to translate
+   * @param {Function} callback callback if confirmed
+   * @param {Function} callback_cancel callback if cancelled
+   */
+  confirmationDialog(text: string, callback: Function, callback_cancel?: Function): void;
+
+  /**
+   * You can use this dialog to give user a choice with small amount of options .
+   * 
+   * @param {string} text message will be shown to user, use _() to translate
+   * @param {Object} choices associative array &quot;value =&gt; text to display&quot;
+   * @param {Function} callback callback returning the choice
+   */
+  multipleChoiceDialog(text: string, choices: { [value: number]: string }, callback: Function): void;
+
+  /**
+   * Display a score over an element.
+   * 
+   * @param {string} anchor_id the element to show the score on
+   * @param {string} color the score color
+   * @param {number} score  the score number
+   * @param {number} duration  duration
+   * @param {number} dx delta x
+   * @param {number} dy delta y
+   */
+  displayScoring(anchor_id: string, color: string, score: number|string, duration?: number, offset_x?: number, offset_y?: number): void;
+
+  /**
+   * Display a text bubble over an element.
+   * 
+   * @param {string} anchor_id the element to show the bubble on
+   * @param {string} text the bubble text
+   * @param {number} duration  duration
+   * @param {string} custom_class CSS class
+   */
+  showBubble(anchor_id: string, text: string, delay?: number, duration?: number, custom_class?: string): void;
+
+  /**
+   * Mark the player panel as disabled (by darkening the background).
+   * 
+   * @param {number} player_id the player to disable
+   */
+  disablePlayerPanel(player_id: number): void;
+
+  /**
+   * Mark the player panel as enabled.
+   * 
+   * @param {number} player_id the player to enable
+   */
+  enablePlayerPanel(player_id: number): void;
+
+  /**
+   * Mark all player panels as enabled.
+   */
+  enableAllPlayerPanels(): void;
+
+  /**
+   * Add a player panel for an automata.
+   *
+   * @param {number} id the automata id, used to setup scoreCtrl and getPlayerPanelElement. 0 or negative value is recommended, to avoid conflict with real player ids.
+   * @param {string} name the name of the automata
+   * @param {Object} params an object with optional params: color (default black), iconClass (default unset) to set a background image (32px x 32px), score (default undefined)
+   */
+  addAutomataPlayerPanel(id: number, name: string, params: {
+      color?: string;
+      iconClass?: string;
+      score?: number;
+  }): void;
+}
+
+declare interface Notif&lt;T = any&gt; {
+  type: string; // type of the notification (as passed by php function)
+  log: string; // the log string passed from php notification
+  args: T; // This is the arguments that you passed on your notification method on php
+  bIsTableMsg: boolean; // is true when you use [[Main_game_logic:_yourgamename.game.php#NotifyAllPlayers|NotifyAllPlayers]] method (false otherwise)
+  move_id: number; // ID of the move associated with the notification
+  time: number; // UNIX GMT timestamp
+  uid: number; // unique identifier of the notification
+}
+
+declare class Counter {
+  constructor();
+
+  /**
+   * Associate the counter with an existing HTML element.
+   * 
+   * @param {HTMLElement | string} target the HTML Element that will display the counter
+   */
+  create(target: ElementOrId): void;
+
+  /**
+   * Return the current value.
+   * 
+   * @returns the current value
+   */
+  getValue(): number;
+
+  /**
+   * Increment the value and animate from the previous value.
+   * 
+   * @param {number} increment the increment to add to current value
+   * @returns the new value
+   */
+  incValue(by: number): number;
+  
+  /**
+   * Set the value (no animation).
+   * 
+   * @param {number} value the new value
+   */
+  setValue(value: number): void;
+
+  /**
+   * Set the value, with animation.
+   * 
+   * @param {number} value the new value
+   */
+  toValue(value: number): void;
+
+  /**
+   * Sets the value to &quot;-&quot;. 
+   * 
+   * Note it just changes display value once, it does not actually disable it, i.e. if you set it again, it will be shown again.
+   */
+  disable(): void;
+}
+
+declare class PopinDialog {
+  /**
+   * Create the popin on the DOM.
+   * 
+   * @param {string} id popin id
+   */
+  create(id: string): void;
+
+  /**
+   * Remove the popin.
+   */
+  destroy(): void;
+
+  /**
+   * Replace the close callback (top right corner 'close' icon) by a custom one.
+   * 
+   * @param {Function} callback the new callback
+   */
+  replaceCloseCallback(callback: Function): void;
+  
+  /**
+   * Hide the close button.
+   */
+  hideCloseIcon(): void;
+
+  /**
+   * Set the popin title.
+   * 
+   * @param {string} title the title
+   */
+  setTitle(title: string): void;
+
+  /**
+   * Set the popin max width.
+   * 
+   * @param {number} maxwidth the max width, in px
+   */
+  setMaxWidth(maxwidth: number): void;
+  
+  /**
+   * Set the content of the popin.
+   * 
+   * @param {string} html the popin content
+   */
+  setContent(html: string): void;
+
+  /**
+   * Show the popin.
+   */
+  show(): void;
+  
+  /**
+   * Hide the popin.
+   */
+  hide(): void;
+}
+
+declare interface StockItems {
+    id: string;
+    type: number;
+    loc?: string;
+}
+
+declare interface StockItemType {
+    weight: number;
+    image: string;
+    image_position: number;
+}
+
+declare class Stock {
+    items: StockItems[];
+    item_type: { [cardUniqueId: number]: StockItemType };
+    selectionClass: string;
+    container_div: HTMLDivElement;
+    control_name: string; // the container_div id
+    centerItems: boolean;
+    image_items_per_row: number;
+
+    create(game: GameGui, container_div: HTMLDivElement, cardwidth: number, cardheight: number): void;
+    setSelectionMode(selectionMode: number): void; 
+    updateDisplay(from?: string): void;
+    setSelectionAppearance(appearance: string): void;
+    addToStock(cardUniqueId: number): void;
+    addToStockWithId(cardUniqueId: number, cardId: string, from?: string): void;
+    addItemType(cardUniqueId: number, cardWeight: number, cardsurl: string, imagePosition: number): void;	
+    getSelectedItems(): any[];
+    unselectAll(): void;
+    removeAll(): void;
+    removeFromStockById(id: string, to?: string): void;
+    removeAllTo(to: string): void;
+    unselectItem(id: string): void;
+    setOverlap(horizontal_percent: number, vertical_percent: number): void;
+    onItemCreate(itemDiv: HTMLElement, itemType, itemDivId: string): any; 
+    onChangeSelection(control_name: string, item_id?: string ): any;
+}
+
+declare class DojoAnimation {
+  play(): void;
+}
+
+interface Dojo {
+    place: (html: string, nodeId: string, action?: string) =&gt; void;
+    style: Function;
+    hitch: Function;
+    hasClass: (nodeId: string, className: string) =&gt; boolean;
+    addClass: (nodeId: string, className: string) =&gt; void;
+    removeClass: (nodeId: string, className?: string) =&gt; void;
+    toggleClass: (nodeId: string, className: string, forceValue?: boolean) =&gt; void;
+    connect: Function;
+    disconnect: Function;
+    query: Function;
+    subscribe: Function;
+    string: any;
+    fx: any;
+    marginBox: Function;
+    fadeIn: Function;
+    trim: Function;
+    stopEvent: (evt) =&gt; void;
+    destroy: (nodeId: string) =&gt; void;
+    forEach: Function;
+}
+</file>
   <file path="src/dbmodel.sql" type="sql">-- ------
 -- BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
 -- HerdingCats implementation : © &lt;Your name here&gt; &lt;Your email address here&gt;
@@ -12729,7 +13380,8 @@ The CSS includes fallback background colors for each card type when images are n
 ## Implementation
 
 Cards are displayed using CSS background-image properties with these files as sprites or individual images. The CSS automatically handles hover states, selection highlighting, and responsive sizing.</file>
-  <file path="src/modules/php/Game.php" type="php">/**
+  <file path="src/modules/php/Game.php" type="php">&lt;?php
+/**
  *------
  * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
  * HerdingCats implementation : © &lt;Your name here&gt; &lt;Your email address here&gt;
@@ -12750,12 +13402,16 @@ namespace Bga\Games\HerdingCats;
 
 class Game extends \Bga\GameFramework\Table
 {
+    /** @var mixed Deck component for card management */
+    protected $cards;
     private static array $CARD_TYPES;
     private const G_PENDING_CARD = 'g_pending_card';
     private const G_PENDING_DECL = 'g_pending_decl';
     private const G_ACTOR = 'g_actor';
     private const G_TARGET_PLAYER = 'g_target_player';
     private const G_TARGET_ZONE = 'g_target_zone'; // 1 = hand, 2 = herd
+    private const G_CHALLENGER = 'g_challenger';
+    private const G_PENALTY_TO_RESOLVE = 'g_penalty_to_resolve';
 
     /**
      * Your global variables labels:
@@ -12776,7 +13432,20 @@ class Game extends \Bga\GameFramework\Table
             self::G_ACTOR =&gt; 12,
             self::G_TARGET_PLAYER =&gt; 13,
             self::G_TARGET_ZONE =&gt; 14,
+            self::G_CHALLENGER =&gt; 15,
+            self::G_PENALTY_TO_RESOLVE =&gt; 16,
         ]);
+
+        // Initialize BGA Deck component (safe even if no real cards are used)
+        try {
+            $this-&gt;cards = $this-&gt;getNew('module.common.deck');
+            if ($this-&gt;cards) {
+                $this-&gt;cards-&gt;init('card');
+            }
+        } catch (\Throwable $e) {
+            // Leave $cards null; code using it guards with fallbacks
+            $this-&gt;cards = null;
+        }
 
         self::$CARD_TYPES = [
             1 =&gt; [
@@ -12979,8 +13648,8 @@ class Game extends \Bga\GameFramework\Table
         $result['handCounts'] = $this-&gt;getHandCounts();
         $result['hand_counts'] = $result['handCounts']; // maintain legacy key expected by view
 
-        // Provide a dummy hand for the current player so UI can select a card
-        $result['hand'] = $this-&gt;getDummyHandFor($current_player_id);
+        // Provide the current player's hand in the exact order (real or stored dummy)
+        $result['hand'] = $this-&gt;getHandList($current_player_id);
 
         // Minimal empty structures for herds/discards expected by client
         $result['herds'] = [];
@@ -12999,30 +13668,136 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Minimal helper to compute per-player hand counts (placeholder until Deck is wired).
+     * Persistent hand counts stored in globals. In new framework, use $this-&gt;globals-&gt;get()/set().
      */
     private function getHandCounts(): array
     {
-        // Minimal placeholder: pretend current player has 7 cards, others 7 as well
-        $players = $this-&gt;getCollectionFromDb(
-            &quot;SELECT `player_id` `id` FROM `player`&quot;
-        );
-        $counts = [];
-        foreach ($players as $p) {
-            $counts[(int)$p['id']] = 7;
+        $stored = $this-&gt;globals-&gt;get('hand_counts');
+        if (!is_array($stored)) {
+            $players = $this-&gt;getCollectionFromDb(&quot;SELECT `player_id` `id` FROM `player`&quot;);
+            $init = [];
+            foreach ($players as $p) { $init[(int)$p['id']] = 7; }
+            $this-&gt;globals-&gt;set('hand_counts', $init);
+            return $init;
         }
+        return $stored;
+    }
+
+    private function setHandCounts(array $counts): void
+    {
+        $this-&gt;globals-&gt;set('hand_counts', $counts);
+    }
+
+    private function adjustHandCount(int $playerId, int $delta): array
+    {
+        $counts = $this-&gt;getHandCounts();
+        $current = $counts[$playerId] ?? 0;
+        $counts[$playerId] = max(0, $current + $delta);
+        $this-&gt;setHandCounts($counts);
         return $counts;
     }
 
-    private function getDummyHandFor(int $playerId): array
+    /**
+     * Hand order tracking for dummy/no-deck mode: persists per-player hand arrays in UI order.
+     */
+    private function getHandOrders(): array
     {
-        // Provide 7 dummy cards with ids and types for UI selection
+        $orders = $this-&gt;globals-&gt;get('hand_orders');
+        return is_array($orders) ? $orders : [];
+    }
+
+    private function setHandOrders(array $orders): void
+    {
+        $this-&gt;globals-&gt;set('hand_orders', $orders);
+    }
+
+    private function getHandList(int $playerId): array
+    {
+        // Prefer real deck when available
+        if (is_object($this-&gt;cards)) {
+            $assoc = $this-&gt;cards-&gt;getCardsInLocation('hand', $playerId);
+            if (!empty($assoc)) {
+                $list = array_values($assoc);
+                usort($list, function ($a, $b) {
+                    $pa = isset($a['location_arg']) ? (int)$a['location_arg'] : 0;
+                    $pb = isset($b['location_arg']) ? (int)$b['location_arg'] : 0;
+                    if ($pa === $pb) {
+                        return ((int)$a['id']) &lt;=&gt; ((int)$b['id']);
+                    }
+                    return $pa &lt;=&gt; $pb;
+                });
+                return $list;
+            }
+        }
+        // Fallback to stored dummy order initialized to current hand count
+        $orders = $this-&gt;getHandOrders();
+        if (!isset($orders[$playerId]) || !is_array($orders[$playerId]) || count($orders[$playerId]) === 0) {
+            $counts = $this-&gt;getHandCounts();
+            $n = $counts[$playerId] ?? 7;
+            $orders[$playerId] = $this-&gt;getDummyHandFor($playerId, $n);
+            $this-&gt;setHandOrders($orders);
+        }
+        // Normalize location_arg sequence
+        $list = array_values($orders[$playerId]);
+        $pos = 1;
+        foreach ($list as &amp;$c) { $c['location_arg'] = $pos++; }
+        return $list;
+    }
+
+    private function setHandList(int $playerId, array $list): void
+    {
+        $orders = $this-&gt;getHandOrders();
+        $norm = [];
+        $pos = 1;
+        foreach ($list as $c) {
+            $cid = (int)$c['id'];
+            $ctype = isset($c['type']) ? (int)$c['type'] : 0;
+            $norm[(string)$cid] = [ 'id' =&gt; $cid, 'type' =&gt; $ctype, 'location_arg' =&gt; $pos++ ];
+        }
+        $orders[$playerId] = $norm;
+        $this-&gt;setHandOrders($orders);
+    }
+
+    /**
+     * Return target player's hand in the exact UI order the owner sees.
+     * - If real cards exist in DB: sort by card_location_arg asc then card_id asc.
+     * - If using placeholder dummy hands: return the dummy list in insertion order.
+     */
+    private function getOrderedHandFor(int $playerId): array
+    {
+        // Try real deck first
+        $assoc = is_object($this-&gt;cards) ? $this-&gt;cards-&gt;getCardsInLocation('hand', $playerId) : [];
+        if (!empty($assoc)) {
+            $list = array_values($assoc);
+            usort($list, function ($a, $b) {
+                $pa = isset($a['location_arg']) ? (int)$a['location_arg'] : 0;
+                $pb = isset($b['location_arg']) ? (int)$b['location_arg'] : 0;
+                if ($pa === $pb) {
+                    return ((int)$a['id']) &lt;=&gt; ((int)$b['id']);
+                }
+                return $pa &lt;=&gt; $pb;
+            });
+            return $list;
+        }
+        // Fallback to dummy hand sized to the tracked count
+        $counts = $this-&gt;getHandCounts();
+        $n = $counts[$playerId] ?? 0;
+        return array_values($this-&gt;getDummyHandFor($playerId, $n));
+    }
+
+    private function getDummyHandFor(int $playerId, ?int $count = null): array
+    {
+        // Provide N dummy cards with ids and types for UI selection
+        // Use stable default order matching the current UI expectation:
+        // [Kitten, Kitten, Show Cat, Alley Cat, Catnip, Animal Control, Laser Pointer]
         $hand = [];
-        $id = 100;
-        for ($i = 0; $i &lt; 7; $i++) {
-            $cardId = $id + $i;
-            $type = ($i % 6) + 1; // 1..6 rotate
-            $hand[(string)$cardId] = [ 'id' =&gt; $cardId, 'type' =&gt; $type ];
+        $n = ($count === null) ? 7 : max(0, (int)$count);
+        $base = 100 + ($playerId % 10) * 1000; // reduce cross-player collisions
+        $defaultOrder = [1, 1, 2, 3, 4, 5, 6];
+        for ($i = 0; $i &lt; $n; $i++) {
+            $cardId = $base + $i;
+            $type = $defaultOrder[$i % count($defaultOrder)];
+            $hand[(string)$cardId] = [ 'id' =&gt; $cardId, 'type' =&gt; $type, 'location_arg' =&gt; ($i + 1) ];
         }
         return $hand;
     }
@@ -13067,29 +13842,48 @@ class Game extends \Bga\GameFramework\Table
     public function argChallengerSelectBluffPenalty(): array
     {
         $actor = (int)$this-&gt;getGameStateValue(self::G_ACTOR);
+        $hand = $this-&gt;getHandList($actor);
         return [
             'target_player_id' =&gt; $actor,
-            'hand_count' =&gt; 7,
+            'hand_count' =&gt; count($hand),
         ];
     }
 
     public function argAttackerSelectTruthfulPenalty(): array
     {
-        $actor  = (int)$this-&gt;getGameStateValue(self::G_ACTOR);
-        $target = (int)$this-&gt;getGameStateValue(self::G_TARGET_PLAYER);
+        // On a failed challenge (truthful declaration), the attacker selects a blind penalty
+        // from the challenger(s). Use the stored challenger id, not the targeting value.
+        $actor      = (int)$this-&gt;getGameStateValue(self::G_ACTOR);
+        $challenger = (int)$this-&gt;getGameStateValue(self::G_CHALLENGER);
+
+        // Defensive guard: if challenger is unset, return minimal args to avoid 0-id lookups
+        if ($challenger === 0) {
+            return [
+                'actor_id'   =&gt; $actor,
+                'actor_name' =&gt; $this-&gt;getPlayerNameById($actor),
+                'challengers' =&gt; [],
+            ];
+        }
+
+        $hand = $this-&gt;getHandList($challenger);
         $args = [
-            'target_player_id'  =&gt; $target,
-            'hand_count'        =&gt; 7,
-            'actor_id'          =&gt; $actor,
-            'actor_name'        =&gt; $this-&gt;getPlayerNameById($actor),
-            'challenger_id'     =&gt; $target,
-            'challenger_name'   =&gt; $this-&gt;getPlayerNameById($target),
+            // legacy fields some clients expect
+            'target_player_id' =&gt; $challenger,
+            'hand_count'       =&gt; count($hand),
+
+            // primary fields
+            'actor_id'        =&gt; $actor,
+            'actor_name'      =&gt; $this-&gt;getPlayerNameById($actor),
+            'challenger_id'   =&gt; $challenger,
+            'challenger_name' =&gt; $this-&gt;getPlayerNameById($challenger),
         ];
-        // Provide a challengers array to satisfy current client code path
+
+        // Provide a challengers array for UIs that iterate
         $args['challengers'] = [[
-            'player_id' =&gt; $target,
-            'hand_count' =&gt; 7,
+            'player_id'  =&gt; $challenger,
+            'hand_count' =&gt; count($hand),
         ]];
+
         return $args;
     }
 
@@ -13104,11 +13898,8 @@ class Game extends \Bga\GameFramework\Table
         $player_id = (int)$this-&gt;getActivePlayerId();
         $decl = (int)$declared_type;
 
-        // Notify card played and hand counts (minimal)
-        $handCounts = $this-&gt;getHandCounts();
-        if (isset($handCounts[$player_id]) &amp;&amp; $handCounts[$player_id] &gt; 0) {
-            $handCounts[$player_id] = max(0, $handCounts[$player_id] - 1);
-        }
+        // Notify card played and persist hand counts
+        $handCounts = $this-&gt;adjustHandCount($player_id, -1);
 
         $this-&gt;notify-&gt;all('cardPlayed', clienttranslate('${player_name} plays a card'), [
             'player_id' =&gt; $player_id,
@@ -13124,9 +13915,26 @@ class Game extends \Bga\GameFramework\Table
         $this-&gt;setGameStateValue(self::G_ACTOR, $player_id);
         $this-&gt;setGameStateValue(self::G_TARGET_PLAYER, 0);
         $this-&gt;setGameStateValue(self::G_TARGET_ZONE, 0);
+        $this-&gt;setGameStateValue(self::G_CHALLENGER, 0);
+        $this-&gt;setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
 
-        // Advance to challenge window
-        $this-&gt;gamestate-&gt;nextState('declared');
+        // Branch: targeted cards select opponent first; others go straight to challenge window
+        if ($this-&gt;requiresTarget($decl)) {
+            $this-&gt;gamestate-&gt;nextState('declaredToTarget');
+        } else {
+            $this-&gt;gamestate-&gt;nextState('declaredToChallenge');
+        }
+
+        // Maintain dummy hand order store: remove the selected card id from player's list
+        $list = $this-&gt;getHandList($player_id);
+        $index = null;
+        foreach ($list as $i =&gt; $c) {
+            if ((int)$c['id'] === (int)$card_id) { $index = $i; break; }
+        }
+        if ($index !== null) {
+            array_splice($list, $index, 1);
+            $this-&gt;setHandList($player_id, $list);
+        }
     }
 
     public function stEnterChallengeWindow(): void
@@ -13156,7 +13964,7 @@ class Game extends \Bga\GameFramework\Table
         // The challenger is the current player (not the active actor!)
         $challenger_id = (int)$this-&gt;getCurrentPlayerId();
         // Store challenger so we can reference in resolve/penalty state
-        $this-&gt;setGameStateValue(self::G_TARGET_PLAYER, $challenger_id);
+        $this-&gt;setGameStateValue(self::G_CHALLENGER, $challenger_id);
         // Close the challenge window and proceed to resolve
         $this-&gt;gamestate-&gt;setAllPlayersNonMultiactive('challenged');
     }
@@ -13199,44 +14007,39 @@ class Game extends \Bga\GameFramework\Table
 
     public function stResolveChallenge(): void
     {
-        // Resolve a challenge by comparing printed card type vs declared type
-        $actor       = (int)$this-&gt;getGameStateValue(self::G_ACTOR);
-        $declared    = (int)$this-&gt;getGameStateValue(self::G_PENDING_DECL);
-        $challenger  = (int)$this-&gt;getGameStateValue(self::G_TARGET_PLAYER); // set in actChallenge
-        $playedCardId= (int)$this-&gt;getGameStateValue(self::G_PENDING_CARD);
+        // Minimal resolution for prototype: use stored pending + target to drive next state
+        $actor     = (int)$this-&gt;getGameStateValue(self::G_ACTOR);
+        $declared  = (int)$this-&gt;getGameStateValue(self::G_PENDING_DECL);
+        $challenger = (int)$this-&gt;getGameStateValue(self::G_CHALLENGER); // set in actChallenge
 
         if ($challenger === 0) {
-            // Nobody challenged: proceed along the normal path
+            // Nobody challenged: route depending on whether target is required/selected
             if ($this-&gt;requiresTarget($declared)) {
-                $this-&gt;gamestate-&gt;nextState('goToTarget');
+                $currentTarget = (int)$this-&gt;getGameStateValue(self::G_TARGET_PLAYER);
+                if ($currentTarget !== 0) {
+                    // Defender should decide to intercept; make them active
+                    $this-&gt;gamestate-&gt;changeActivePlayer($currentTarget);
+                    $this-&gt;gamestate-&gt;nextState('goToIntercept');
+                } else {
+                    $this-&gt;gamestate-&gt;nextState('goToTarget');
+                }
             } else {
-                $this-&gt;gamestate-&gt;nextState('challengeFailed');
+                $this-&gt;gamestate-&gt;nextState('goToResolve');
             }
             return;
         }
 
-        // Fetch the played card and compare
-        $card = $this-&gt;cards-&gt;getCard($playedCardId);
-        $printed = isset($card['type']) ? (int)$card['type'] : 0;
-        $was_bluffing = ($printed !== $declared);
-
-        // Notify result (keep payload simple but informative for client)
+        // Force a loss for the challenger in this prototype so we can reach penalty UI
+        // i.e., the declaration is considered truthful
         $this-&gt;notify-&gt;all('challengeResult', '', [
-            'player_name'      =&gt; $this-&gt;getPlayerNameById($actor),
-            'declared_type'    =&gt; $declared,
-            'actual_card_type' =&gt; $printed,
-            'was_bluffing'     =&gt; $was_bluffing,
+            'player_name'    =&gt; $this-&gt;getPlayerNameById($actor),
+            'declared_type'  =&gt; $declared,
+            'was_bluffing'   =&gt; false,
         ]);
 
-        if ($was_bluffing) {
-            // Challenger wins: make challenger active to pick a blind penalty from actor
-            $this-&gt;gamestate-&gt;changeActivePlayer($challenger);
-            $this-&gt;gamestate-&gt;nextState('bluffCaught');
-        } else {
-            // Truthful: actor may discard a blind card from challenger
-            $this-&gt;gamestate-&gt;changeActivePlayer($actor);
-            $this-&gt;gamestate-&gt;nextState('challengeFailed');
-        }
+        // Active player (actor) may discard one card from opponent hand
+        $this-&gt;gamestate-&gt;changeActivePlayer($actor);
+        $this-&gt;gamestate-&gt;nextState('challengeFailed');
     }
 
     public function stResolveInterceptChallenge(): void
@@ -13373,11 +14176,25 @@ class Game extends \Bga\GameFramework\Table
     {
         $this-&gt;checkAction('actSelectBlindFromChallenger');
         $actor = (int)$this-&gt;getActivePlayerId();
-        // Derive a dummy card id/type for the target's hand (ids 100..)
-        $card_id = 100 + max(0, $card_index);
-        $card_type = (($card_id - 100) % 6) + 1;
 
-        // Notify removal from target's hand and add to discard (visual only)
+        // Determine the ordered hand as seen by the owner
+        $realAssoc = is_object($this-&gt;cards) ? $this-&gt;cards-&gt;getCardsInLocation('hand', $player_id) : [];
+        $hand = $this-&gt;getHandList($player_id);
+        $n = count($hand);
+        // Expect 1-based index from client (slot numbers 1..N)
+        if ($card_index &lt; 1 || $card_index &gt; $n) {
+            throw new \BgaUserException(self::_(&quot;Invalid slot index.&quot;));
+        }
+        $picked = $hand[$card_index - 1];
+        $card_id = (int)$picked['id'];
+        $card_type = isset($picked['type']) ? (int)$picked['type'] : 0;
+
+        // If a real deck exists, move the card to discard; otherwise simulate with notifications
+        if (!empty($realAssoc) &amp;&amp; is_object($this-&gt;cards)) {
+            $this-&gt;cards-&gt;moveCard($card_id, 'discard', $player_id);
+        }
+
+        // Notify removal and discard
         $this-&gt;notify-&gt;all('cardRemoved', '', [
             'player_id' =&gt; $player_id,
             'card_id'   =&gt; $card_id,
@@ -13388,12 +14205,18 @@ class Game extends \Bga\GameFramework\Table
             'card' =&gt; [ 'id' =&gt; $card_id, 'type' =&gt; $card_type ],
         ]);
 
-        // Hand counts (placeholder)
-        $counts = $this-&gt;getHandCounts();
-        if (isset($counts[$player_id]) &amp;&amp; $counts[$player_id] &gt; 0) { $counts[$player_id]--; }
+        // Hand counts (persisted placeholder)
+        $counts = $this-&gt;adjustHandCount($player_id, -1);
         $this-&gt;notify-&gt;all('handCountUpdate', '', [ 'hand_counts' =&gt; $counts ]);
 
-        // Log
+        // Update stored hand order list (dummy mode)
+        if (empty($realAssoc)) {
+            $list = $this-&gt;getHandList($player_id);
+            array_splice($list, $card_index - 1, 1);
+            $this-&gt;setHandList($player_id, $list);
+        }
+
+        // Log and state progression
         $this-&gt;notify-&gt;all('truthPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
             'player_id'   =&gt; $actor,
             'player_name' =&gt; $this-&gt;getPlayerNameById($actor),
@@ -13401,18 +14224,41 @@ class Game extends \Bga\GameFramework\Table
             'target_name' =&gt; $this-&gt;getPlayerNameById($player_id),
             'card_index'  =&gt; $card_index,
         ]);
-        $this-&gt;gamestate-&gt;nextState('penaltyApplied');
+
+        // Route depending on whether the declared card requires targeting
+        $decl = (int)$this-&gt;getGameStateValue(self::G_PENDING_DECL);
+        if ((int)$this-&gt;getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1) {
+            $this-&gt;setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
+            $this-&gt;gamestate-&gt;nextState('toResolve');
+            return;
+        }
+        if (!$this-&gt;requiresTarget($decl)) {
+            $this-&gt;gamestate-&gt;nextState('toResolve');
+        } else {
+            $this-&gt;gamestate-&gt;nextState('penaltyApplied');
+        }
     }
 
     public function actSelectBlindFromActor(int $card_index): void
     {
         $this-&gt;checkAction('actSelectBlindFromActor');
-        $actor = (int)$this-&gt;getActivePlayerId();
+        $picker = (int)$this-&gt;getActivePlayerId();
         $fromPlayer = (int)$this-&gt;getGameStateValue(self::G_ACTOR);
 
-        // Derive dummy id/type for actor's hand
-        $card_id = 100 + max(0, $card_index);
-        $card_type = (($card_id - 100) % 6) + 1;
+        $realAssoc = is_object($this-&gt;cards) ? $this-&gt;cards-&gt;getCardsInLocation('hand', $fromPlayer) : [];
+        $hand = $this-&gt;getHandList($fromPlayer);
+        $n = count($hand);
+        // Expect 1-based index from client (slot numbers 1..N)
+        if ($card_index &lt; 1 || $card_index &gt; $n) {
+            throw new \BgaUserException(self::_(&quot;Invalid slot index.&quot;));
+        }
+        $picked = $hand[$card_index - 1];
+        $card_id = (int)$picked['id'];
+        $card_type = isset($picked['type']) ? (int)$picked['type'] : 0;
+
+        if (!empty($realAssoc) &amp;&amp; is_object($this-&gt;cards)) {
+            $this-&gt;cards-&gt;moveCard($card_id, 'discard', $fromPlayer);
+        }
 
         $this-&gt;notify-&gt;all('cardRemoved', '', [
             'player_id' =&gt; $fromPlayer,
@@ -13423,14 +14269,19 @@ class Game extends \Bga\GameFramework\Table
             'player_id' =&gt; $fromPlayer,
             'card' =&gt; [ 'id' =&gt; $card_id, 'type' =&gt; $card_type ],
         ]);
-
-        $counts = $this-&gt;getHandCounts();
-        if (isset($counts[$fromPlayer]) &amp;&amp; $counts[$fromPlayer] &gt; 0) { $counts[$fromPlayer]--; }
+        $counts = $this-&gt;adjustHandCount($fromPlayer, -1);
         $this-&gt;notify-&gt;all('handCountUpdate', '', [ 'hand_counts' =&gt; $counts ]);
 
+        // Update stored hand order list (dummy mode)
+        if (empty($realAssoc)) {
+            $list = $this-&gt;getHandList($fromPlayer);
+            array_splice($list, $card_index - 1, 1);
+            $this-&gt;setHandList($fromPlayer, $list);
+        }
+
         $this-&gt;notify-&gt;all('bluffPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
-            'player_id'   =&gt; $actor,
-            'player_name' =&gt; $this-&gt;getPlayerNameById($actor),
+            'player_id'   =&gt; $picker,
+            'player_name' =&gt; $this-&gt;getPlayerNameById($picker),
             'target_id'   =&gt; $fromPlayer,
             'target_name' =&gt; $this-&gt;getPlayerNameById($fromPlayer),
             'card_index'  =&gt; $card_index,
@@ -13537,7 +14388,12 @@ class Game extends \Bga\GameFramework\Table
 
     public function argInterceptDeclare(): array
     {
-        return [];
+        $target = (int)$this-&gt;getGameStateValue(self::G_TARGET_PLAYER);
+        // Avoid calling getPlayerNameById with 0 when no target is set
+        $name = $target &gt; 0 ? $this-&gt;getPlayerNameById($target) : '';
+        return [
+            'target_player' =&gt; $name,
+        ];
     }
 
     public function argInterceptChallengeWindow(): array
@@ -13550,6 +14406,50 @@ class Game extends \Bga\GameFramework\Table
     public function argInterceptChallengerSelectPenalty(): array
     {
         return [];
+    }
+
+    // =============
+    // Intercept actions (minimal)
+    // =============
+    public function actPassIntercept(): void
+    {
+        $this-&gt;checkAction('actPassIntercept');
+        // If Alley Cat was declared, attacker chooses a blind card from target's hand
+        $decl = (int)$this-&gt;getGameStateValue(self::G_PENDING_DECL);
+        if ($decl === 3) { // Alley Cat
+            $this-&gt;setGameStateValue(self::G_PENALTY_TO_RESOLVE, 1);
+            // Switch active player in a dedicated GAME state (safe in engine)
+            $this-&gt;gamestate-&gt;nextState('noInterceptPenalty');
+            return;
+        }
+        $this-&gt;gamestate-&gt;nextState('noIntercept');
+    }
+
+    public function stPrepareAttackerPenalty(): void
+    {
+        $actor = (int)$this-&gt;getGameStateValue(self::G_ACTOR);
+        $this-&gt;gamestate-&gt;changeActivePlayer($actor);
+        $this-&gt;gamestate-&gt;nextState('toPenalty');
+    }
+
+    public function actDeclareIntercept(): void
+    {
+        $this-&gt;checkAction('actDeclareIntercept');
+        // For now, just proceed to intercept challenge window without card verification
+        $this-&gt;gamestate-&gt;nextState('interceptDeclared');
+    }
+
+    public function actChallengeIntercept(): void
+    {
+        $this-&gt;checkAction('actChallengeIntercept');
+        // Minimal: treat as no challengers and continue
+        $this-&gt;gamestate-&gt;nextState('interceptUnchallenged');
+    }
+
+    public function actPassChallengeIntercept(): void
+    {
+        $this-&gt;checkAction('actPassChallengeIntercept');
+        $this-&gt;gamestate-&gt;nextState('interceptUnchallenged');
     }
 
     /**

@@ -21,15 +21,24 @@ def consolidate_files():
     # Create root XML element
     root = ET.Element('codebase')  
     
-    # Define code file extensions to include
-    code_extensions = {
-        '.php', '.js', '.css', '.sql', '.json', '.d.ts', '.tpl', '.sh', '.md'
-    }
+    # Define code file patterns to include
+    # Using endswith patterns to catch compound extensions like .inc.php, .game.php, etc.
+    code_patterns = [
+        '.php',       # Catches all PHP files including .inc.php, .game.php, .action.php, .view.php
+        '.js',        # JavaScript files
+        '.css',       # Stylesheets
+        '.sql',       # Database schemas
+        '.json',      # Configuration files
+        '.d.ts',      # TypeScript definitions
+        '.tpl',       # Template files
+        '.sh',        # Shell scripts
+    ]
     
     # Define specific markdown files to include (beyond the game design and API docs)
     specific_md_files = {
         'README.md', 'DEPLOYMENT_GUIDE.md', 'IMPLEMENTATION_STAGES.md', 
-        'implementation_progress.md', 'game_implementation_plan.md'
+        'implementation_progress.md', 'game_implementation_plan.md', 'CLAUDE.md',
+        'testplan.md'  # Include test plan documentation
     }
     
     # Track processed files for summary
@@ -48,15 +57,15 @@ def consolidate_files():
             filepath = os.path.join(dirpath, filename)
             relative_path = os.path.relpath(filepath, parent_dir)
             
-            # Check if this is a code file or specific markdown file
-            file_ext = os.path.splitext(filename)[1].lower()
-            is_code_file = file_ext in code_extensions
+            # Check if this is a code file using endswith patterns
+            is_code_file = any(filename.lower().endswith(pattern) for pattern in code_patterns)
             is_specific_md = filename in specific_md_files
             is_game_design = filename == 'game_design.md'
             is_in_api_docs = 'api_docs' in relative_path
+            is_markdown = filename.lower().endswith('.md')
             
             # Include if it's a code file, or specific markdown, or game design, or in API docs
-            should_include = (is_code_file and file_ext != '.md') or is_specific_md or is_game_design or is_in_api_docs
+            should_include = is_code_file or is_specific_md or is_game_design or (is_in_api_docs and is_markdown)
             
             if should_include:
                 try:
@@ -66,7 +75,21 @@ def consolidate_files():
                     # Create file element
                     file_elem = ET.SubElement(root, 'file')
                     file_elem.set('path', relative_path)
-                    file_elem.set('type', file_ext[1:] if file_ext else 'no_extension')
+                    # Get proper file extension (handle compound extensions)
+                    if filename.lower().endswith('.inc.php'):
+                        file_type = 'inc.php'
+                    elif filename.lower().endswith('.game.php'):
+                        file_type = 'game.php'
+                    elif filename.lower().endswith('.action.php'):
+                        file_type = 'action.php'
+                    elif filename.lower().endswith('.view.php'):
+                        file_type = 'view.php'
+                    elif filename.lower().endswith('.d.ts'):
+                        file_type = 'd.ts'
+                    else:
+                        file_ext = os.path.splitext(filename)[1].lower()
+                        file_type = file_ext[1:] if file_ext else 'no_extension'
+                    file_elem.set('type', file_type)
                     
                     # Add content as text (ET handles escaping)
                     file_elem.text = content

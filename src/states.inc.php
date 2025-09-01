@@ -59,7 +59,7 @@ $machinestates = [
 
     20 => GameStateBuilder::create()
         ->name('challengeWindow')
-        ->description(clienttranslate('Waiting for possible challenges'))
+        ->description(clienttranslate('Waiting for possible challenges [DEV]'))
         ->descriptionmyturn(clienttranslate('You may challenge the declaration'))
         ->type(StateType::MULTIPLE_ACTIVE_PLAYER)
         ->args('argChallengeWindow')

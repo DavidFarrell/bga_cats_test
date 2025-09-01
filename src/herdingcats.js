@@ -323,16 +323,21 @@ function (dojo, declare) {
         onEnteringState_challengeWindow: function(args) {
             // Show challenge options for eligible players
             // Cache declared data so preview persists across re-renders
-            if (args && args.declared_card) {
-                this.currentDeclaredType = args.declared_card;
-            }
-            if (args && args.acting_player_name) {
-                this.currentActorName = args.acting_player_name;
+            if (args) {
+                // Prefer numeric declared_type; fallback to declared_card
+                const dType = (args.declared_type !== undefined && args.declared_type !== null)
+                    ? args.declared_type
+                    : args.declared_card;
+                if (dType !== undefined && dType !== null) this.currentDeclaredType = dType;
+                // Accept either actor_name or acting_player_name
+                this.currentActorName = args.actor_name || args.acting_player_name || this.currentActorName;
             }
             this.updateActionPrompts('challengeWindow', args);
             // Ensure preview is rendered immediately
-            const dType = (args && args.declared_card) ? args.declared_card : this.currentDeclaredType;
-            if (dType) this.renderDeclaredPreview(dType);
+            const previewType = (args && (args.declared_type !== undefined || args.declared_card !== undefined))
+                ? (args.declared_type !== undefined ? args.declared_type : args.declared_card)
+                : this.currentDeclaredType;
+            if (previewType !== undefined && previewType !== null) this.renderDeclaredPreview(previewType);
         },
 
         onEnteringState_selectTarget: function(args) {
@@ -511,8 +516,13 @@ function (dojo, declare) {
 
             // For challenge window, show a small declared preview to all players, using fallback when needed
             if (stateName === 'challengeWindow') {
-                const dTypePrev = (args && args.declared_card) ? args.declared_card : this.currentDeclaredType;
-                if (dTypePrev) this.renderDeclaredPreview(dTypePrev);
+                let dTypePrev = null;
+                if (args) {
+                    if (args.declared_type !== undefined && args.declared_type !== null) dTypePrev = args.declared_type;
+                    else if (args.declared_card !== undefined && args.declared_card !== null) dTypePrev = args.declared_card;
+                }
+                if (dTypePrev === null || dTypePrev === undefined) dTypePrev = this.currentDeclaredType;
+                if (dTypePrev !== null && dTypePrev !== undefined) this.renderDeclaredPreview(dTypePrev);
             }
         },
 
@@ -526,9 +536,11 @@ function (dojo, declare) {
                 prev = dojo.create('div', { id: prevId, style: 'margin-top:8px; display:flex; align-items:center; gap:8px;' }, promptsDiv);
                 const card = dojo.create('div', { className: 'hc_card hc_face_down', style: 'width:36px;height:48px;border-width:1px;background-image:url('+ (typeof g_gamethemeurl!=='undefined'? g_gamethemeurl : '') + 'img/herding_cats_art/cardback.jpeg);background-size:cover;background-position:center;' }, prev);
                 // background-image is set by CSS class hc_face_down
-                dojo.create('span', { innerHTML: dojo.string.substitute(_('Declared as: ${type}'), { type: this.cardTypeNames[declaredType] }) }, prev);
+                const label = (this.cardTypeNames && this.cardTypeNames[declaredType]) ? this.cardTypeNames[declaredType] : declaredType;
+                dojo.create('span', { innerHTML: dojo.string.substitute(_('Declared as: ${type}'), { type: label }) }, prev);
             } else {
-                prev.querySelector('span').innerHTML = dojo.string.substitute(_('Declared as: ${type}'), { type: this.cardTypeNames[declaredType] });
+                const label = (this.cardTypeNames && this.cardTypeNames[declaredType]) ? this.cardTypeNames[declaredType] : declaredType;
+                prev.querySelector('span').innerHTML = dojo.string.substitute(_('Declared as: ${type}'), { type: label });
             }
         },
 
@@ -904,25 +916,38 @@ function (dojo, declare) {
         notif_challengeResult: async function( args )
         {
             console.log( 'notif_challengeResult', args );
-            
-            const wasBluffing = args.was_bluffing;
-            const actualType = args.actual_card_type;
-            const declaredType = args.declared_type;
-            
+
+            // Accept both legacy and structured keys
+            const wasBluffing = (args.was_bluffing !== undefined) ? args.was_bluffing : args.bluffing;
             const playerName = args.player_name || _('Player');
+
+            // Determine declared and actual labels (prefer numeric types → mapped names; fallback to provided strings)
+            const declaredType = (args.declared_type !== undefined && args.declared_type !== null)
+                ? args.declared_type : args.declared_card;
+            const actualType = (args.actual_card_type !== undefined && args.actual_card_type !== null)
+                ? args.actual_card_type : args.actual_card;
+
+            const typeLabel = (t) => {
+                if (t === undefined || t === null) return _('unknown');
+                // Numeric id
+                if (typeof t === 'number' || /^[0-9]+$/.test(String(t))) {
+                    const key = parseInt(t);
+                    return (this.cardTypeNames && this.cardTypeNames[key]) ? this.cardTypeNames[key] : _('unknown');
+                }
+                // String label from server
+                return t;
+            };
+
             if (wasBluffing) {
-                const actualLabel = actualType ? this.cardTypeNames[actualType] : _('unknown');
-                const declaredLabel = declaredType ? this.cardTypeNames[declaredType] : _('unknown');
                 this.showMessage(dojo.string.substitute(_('${player} was bluffing! Card was ${actual} not ${declared}'), {
                     player: playerName,
-                    actual: actualLabel,
-                    declared: declaredLabel
+                    actual: typeLabel(actualType),
+                    declared: typeLabel(declaredType)
                 }), 'info');
             } else {
-                const declaredLabel = declaredType ? this.cardTypeNames[declaredType] : _('unknown');
                 this.showMessage(dojo.string.substitute(_('${player} was truthful! Card was indeed ${declared}'), {
                     player: playerName,
-                    declared: declaredLabel
+                    declared: typeLabel(declaredType)
                 }), 'info');
             }
         },
@@ -953,20 +978,24 @@ function (dojo, declare) {
         notif_discardUpdate: async function( args )
         {
             console.log( 'notif_discardUpdate', args );
-            
             const playerId = args.player_id;
-            // Server may send either a full list under discard_cards or a single card under card
-            let cardsSpec = args.discard_cards !== undefined ? args.discard_cards : (args.card ? [args.card] : []);
-            // Support associative objects returned by PHP (id => card)
-            const cards = Array.isArray(cardsSpec) ? cardsSpec : Object.values(cardsSpec || {});
-            
-            if (this.playerDiscards[playerId]) {
+            if (!this.playerDiscards[playerId]) return;
+
+            // If a full list is provided, replace; otherwise append a single card.
+            if (args.discard_cards !== undefined) {
+                const cardsSpec = args.discard_cards;
+                const cards = Array.isArray(cardsSpec) ? cardsSpec : Object.values(cardsSpec || {});
                 this.playerDiscards[playerId].removeAll();
                 cards.forEach(card => {
                     if (card && card.id !== undefined && card.type !== undefined) {
                         this.playerDiscards[playerId].addToStockWithId(card.type, card.id);
                     }
                 });
+                return;
+            }
+
+            if (args.card && args.card.id !== undefined && args.card.type !== undefined) {
+                this.playerDiscards[playerId].addToStockWithId(args.card.type, args.card.id);
             }
         },
 

@@ -1,0 +1,4738 @@
+<codebase><file path="src/herdingcats.action.php">&lt;?php
+/**
+ *------
+ * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
+ * HerdingCats implementation : © &lt;Your name here&gt; &lt;Your email address here&gt;
+ * 
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ * 
+ * herdingcats.action.php
+ *
+ * HerdingCats main action entry point
+ *
+ * In this file, you are describing all the methods that can be called from your
+ * user interface logic (javascript).
+ *       
+ * If you define a method "myAction" here, then you can call it from your javascript code with:
+ * bgaPerformAction('myAction', { 
+ *    'parameter1': myParameter1,
+ *    'parameter2': myParameter2,
+ *    ...
+ * });
+ */
+  
+class action_herdingcats extends APP_GameAction
+{ 
+    // Constructor: please do not modify
+    public function __default()
+    {
+        if( self::isArg( 'notifwindow') )
+        {
+            $this-&gt;view = "common_notifwindow";
+            $this-&gt;viewArgs['table'] = self::getArg( "table", AT_posint, true );
+        }
+        else
+        {
+            $this-&gt;view = "herdingcats_herdingcats";
+            self::trace( "Complete reinitialization." );
+        }
+    } 
+    
+    // TODO: defines your action entry points there
+
+    /*
+    
+    Example:
+  	
+    public function myAction()
+    {
+        self::setAjaxMode();     
+
+        // Retrieve arguments
+        // Note: these arguments correspond to what has been sent through the javascript "bgaPerformAction" call
+        $arg1 = self::getArg( "myArgument1", AT_posint, true );
+        $arg2 = self::getArg( "myArgument2", AT_posint, true );
+
+        // Then, call the appropriate method in your game logic, like:
+        $this-&gt;game-&gt;myAction( $arg1, $arg2 );
+
+        self::ajaxResponse( );
+    }
+    
+    */
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Declaration Phase Actions
+    //////////// 
+
+    /**
+     * Player declares a card identity and plays it
+     * 
+     * @param int $card_id - The card being played from hand
+     * @param string $declared_type - What card type the player claims it is
+     * @param int|null $target_player_id - Target player for targeted effects (null for non-targeting cards)
+     */
+    public function actDeclare()
+    {
+        self::setAjaxMode();
+        
+        // Retrieve arguments from JavaScript call
+        $card_id = self::getArg("card_id", AT_posint, true);
+        $declared_type = self::getArg("declared_type", AT_posint, true);
+        $target_player_id = self::getArg("target_player_id", AT_posint, false);
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actDeclare');
+        
+        // Call the game logic method
+        $this-&gt;game-&gt;actDeclare($card_id, $declared_type, $target_player_id);
+        
+        self::ajaxResponse();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Challenge Phase Actions
+    //////////// 
+
+    /**
+     * Player challenges the declaration made by the active player
+     * 
+     * @param int $actor_id - The player being challenged
+     */
+    public function actChallenge()
+    {
+        self::setAjaxMode();
+        
+        $actor_id = self::getArg("actor_id", AT_posint, true);
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actChallenge');
+        
+        $this-&gt;game-&gt;actChallenge($actor_id);
+        
+        self::ajaxResponse();
+    }
+
+    /**
+     * Player passes on challenging the declaration
+     */
+    public function actPassChallenge()
+    {
+        self::setAjaxMode();
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actPassChallenge');
+        
+        $this-&gt;game-&gt;actPassChallenge();
+        
+        self::ajaxResponse();
+    }
+
+    /**
+     * After a successful challenge (bluff caught), challenger selects a card from actor's hand to discard
+     * 
+     * @param int $card_index - Index of card in actor's hand (0-based, for blind selection)
+     */
+    public function actSelectBlindFromActor()
+    {
+        self::setAjaxMode();
+        
+        $card_index = self::getArg("card_index", AT_posint, true);
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actSelectBlindFromActor');
+        
+        $this-&gt;game-&gt;actSelectBlindFromActor($card_index);
+        
+        self::ajaxResponse();
+    }
+
+    /**
+     * After a failed challenge (actor was truthful), actor selects penalty cards from challengers
+     * 
+     * @param int $player_id - The challenger to penalize
+     * @param int $card_index - Index of card in challenger's hand (0-based, for blind selection)
+     */
+    public function actSelectBlindFromChallenger()
+    {
+        self::setAjaxMode();
+        
+        $player_id = self::getArg("player_id", AT_posint, true);
+        $card_index = self::getArg("card_index", AT_posint, true);
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actSelectBlindFromChallenger');
+        
+        $this-&gt;game-&gt;actSelectBlindFromChallenger($player_id, $card_index);
+        
+        self::ajaxResponse();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Target Selection Phase Actions
+    //////////// 
+
+    /**
+     * Player selects a specific target slot for their targeting effect
+     * 
+     * @param int $slot_index - Index of the target slot (0-based)
+     * @param string $zone - Target zone ("hand" or "herd")
+     */
+    public function actSelectTargetSlot()
+    {
+        self::setAjaxMode();
+        
+        $slot_index = self::getArg("slot_index", AT_posint, true);
+        $zone = self::getArg("zone", AT_alphanum, true);
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actSelectTargetSlot');
+        
+        $this-&gt;game-&gt;actSelectTargetSlot($slot_index, $zone);
+        
+        self::ajaxResponse();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Intercept Phase Actions
+    //////////// 
+
+    /**
+     * Defender declares an intercept with Laser Pointer
+     * 
+     * @param int $card_id - The Laser Pointer card being used to intercept
+     * @param string $zone - Zone the Laser Pointer is from ("hand" or "herd")
+     */
+    public function actDeclareIntercept()
+    {
+        self::setAjaxMode();
+        
+        $card_id = self::getArg("card_id", AT_posint, true);
+        $zone = self::getArg("zone", AT_alphanum, true);
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actDeclareIntercept');
+        
+        $this-&gt;game-&gt;actDeclareIntercept($card_id, $zone);
+        
+        self::ajaxResponse();
+    }
+
+    /**
+     * Defender passes on intercepting
+     */
+    public function actPassIntercept()
+    {
+        self::setAjaxMode();
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actPassIntercept');
+        
+        $this-&gt;game-&gt;actPassIntercept();
+        
+        self::ajaxResponse();
+    }
+
+    /**
+     * Player challenges the intercept declaration
+     */
+    public function actChallengeIntercept()
+    {
+        self::setAjaxMode();
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actChallengeIntercept');
+        
+        $this-&gt;game-&gt;actChallengeIntercept();
+        
+        self::ajaxResponse();
+    }
+
+    /**
+     * Player passes on challenging the intercept
+     */
+    public function actPassChallengeIntercept()
+    {
+        self::setAjaxMode();
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actPassChallengeIntercept');
+        
+        $this-&gt;game-&gt;actPassChallengeIntercept();
+        
+        self::ajaxResponse();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Debug Actions (if needed)
+    //////////// 
+
+    /**
+     * Skip targeting for non-targeting cards
+     */
+    public function actSkipTargeting()
+    {
+        self::setAjaxMode();
+        
+        // Check action is valid
+        $this-&gt;game-&gt;checkAction('actSkipTargeting');
+        
+        $this-&gt;game-&gt;actSkipTargeting();
+        
+        self::ajaxResponse();
+    }
+
+    /**
+     * Debug action - jump to a specific game state for testing
+     * Only available in studio mode
+     */
+    public function actDebugGoToState()
+    {
+        self::setAjaxMode();
+        
+        $state = self::getArg("state", AT_posint, false, 3);
+        
+        $this-&gt;game-&gt;debug_goToState($state);
+        
+        self::ajaxResponse();
+    }
+
+    /**
+     * Client log relay for debugging (Studio only)
+     */
+    public function actClientLog()
+    {
+        self::setAjaxMode();
+        $level = self::getArg('level', AT_alphanum, false, 'log');
+        // Accept a simple alphanumeric debug tag from client
+        $msg = self::getArg('msg', AT_alphanum, true);
+        error_log('[HC CLIENT '.$level.'] '.$msg);
+        self::ajaxResponse();
+    }
+
+    /*
+    
+    TODO: Add more debug actions as needed for testing:
+    
+    public function actDebugSetCardInHand()
+    {
+        self::setAjaxMode();
+        
+        $card_type = self::getArg("card_type", AT_posint, true);
+        $player_id = self::getArg("player_id", AT_posint, true);
+        
+        $this-&gt;game-&gt;debug_setCardInHand($card_type, $player_id);
+        
+        self::ajaxResponse();
+    }
+    
+    */
+}
+</file><file path="src/material.inc.php">&lt;?php
+/**
+ *------
+ * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
+ * HerdingCats implementation : © &lt;Your name here&gt; &lt;Your email address here&gt;
+ * 
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ *
+ * material.inc.php
+ *
+ * HerdingCats game material description
+ *
+ * Here, you can describe the material of your game with PHP variables.
+ *
+ */
+
+/*
+ * Card Type Constants
+ */
+define('CARD_TYPE_KITTEN', 1);
+define('CARD_TYPE_SHOWCAT', 2);  
+define('CARD_TYPE_ALLEYCAT', 3);
+define('CARD_TYPE_CATNIP', 4);
+define('CARD_TYPE_ANIMALCONTROL', 5);
+define('CARD_TYPE_LASERPOINTER', 6);
+
+/*
+ * Card Location Constants
+ */
+define('CARD_LOCATION_DECK', 'deck');
+define('CARD_LOCATION_HAND', 'hand');
+define('CARD_LOCATION_HERD_DOWN', 'herd_down');  // Face-down in herd
+define('CARD_LOCATION_HERD_UP', 'herd_up');      // Face-up in herd (protected)
+define('CARD_LOCATION_DISCARD', 'discard');
+define('CARD_LOCATION_REMOVED', 'removed');
+define('CARD_LOCATION_LIMBO', 'limbo');          // Temporary location during actions
+
+/*
+ * Target Zone Constants
+ */
+define('TARGET_ZONE_HAND', 'hand');
+define('TARGET_ZONE_HERD', 'herd');
+
+/*
+ * Game Phase Constants
+ */
+define('PHASE_DECLARATION', 'declaration');
+define('PHASE_CHALLENGE', 'challenge');
+define('PHASE_TARGET_SELECT', 'target_select');
+define('PHASE_INTERCEPT', 'intercept');
+define('PHASE_RESOLVE', 'resolve');
+
+/*
+ * Card Definitions
+ * Each card type with its properties and behavior
+ */
+$this-&gt;card_types = [
+    CARD_TYPE_KITTEN =&gt; [
+        'name' =&gt; clienttranslate('Kitten'),
+        'value' =&gt; 2,
+        'targets' =&gt; false,
+        'target_zone' =&gt; null,
+        'description' =&gt; clienttranslate('A cute kitten worth 2 points. No special effect.'),
+        'sprite_position' =&gt; 0
+    ],
+    
+    CARD_TYPE_SHOWCAT =&gt; [
+        'name' =&gt; clienttranslate('Show Cat'),
+        'value' =&gt; 5, // Base value, becomes 7 if player has at least one Kitten
+        'targets' =&gt; false,
+        'target_zone' =&gt; null,
+        'description' =&gt; clienttranslate('Worth 5 points normally, 7 points if you have at least one Kitten in your herd at scoring.'),
+        'sprite_position' =&gt; 1
+    ],
+    
+    CARD_TYPE_ALLEYCAT =&gt; [
+        'name' =&gt; clienttranslate('Alley Cat'),
+        'value' =&gt; 1,
+        'targets' =&gt; true,
+        'target_zone' =&gt; TARGET_ZONE_HAND,
+        'description' =&gt; clienttranslate('Force opponent to discard a card from their hand. Worth 1 point.'),
+        'sprite_position' =&gt; 2
+    ],
+    
+    CARD_TYPE_CATNIP =&gt; [
+        'name' =&gt; clienttranslate('Catnip'),
+        'value' =&gt; 1,
+        'targets' =&gt; true,
+        'target_zone' =&gt; TARGET_ZONE_HAND,
+        'description' =&gt; clienttranslate('Steal a card from opponent\'s hand into your herd. Worth 1 point.'),
+        'sprite_position' =&gt; 3
+    ],
+    
+    CARD_TYPE_ANIMALCONTROL =&gt; [
+        'name' =&gt; clienttranslate('Animal Control'),
+        'value' =&gt; 0,
+        'targets' =&gt; true,
+        'target_zone' =&gt; TARGET_ZONE_HERD,
+        'description' =&gt; clienttranslate('Remove a face-down card from opponent\'s herd. Worth 0 points.'),
+        'sprite_position' =&gt; 4
+    ],
+    
+    CARD_TYPE_LASERPOINTER =&gt; [
+        'name' =&gt; clienttranslate('Laser Pointer'),
+        'value' =&gt; 0,
+        'targets' =&gt; false,
+        'target_zone' =&gt; null,
+        'description' =&gt; clienttranslate('Can be discarded to intercept attacks targeting you. Worth 0 points.'),
+        'sprite_position' =&gt; 5
+    ]
+];
+
+/*
+ * Deck Specification
+ * Each player gets identical 9-card deck
+ */
+$this-&gt;deck_composition = [
+    CARD_TYPE_KITTEN =&gt; 3,        // 3 Kittens per player
+    CARD_TYPE_SHOWCAT =&gt; 1,       // 1 Show Cat per player
+    CARD_TYPE_ALLEYCAT =&gt; 2,      // 2 Alley Cats per player
+    CARD_TYPE_CATNIP =&gt; 1,        // 1 Catnip per player
+    CARD_TYPE_ANIMALCONTROL =&gt; 1, // 1 Animal Control per player
+    CARD_TYPE_LASERPOINTER =&gt; 1   // 1 Laser Pointer per player
+];
+
+// BGA-compatible DECK_PER_PLAYER constant array
+define('DECK_PER_PLAYER', [
+    CARD_TYPE_KITTEN =&gt; 3,
+    CARD_TYPE_SHOWCAT =&gt; 1,
+    CARD_TYPE_ALLEYCAT =&gt; 2,
+    CARD_TYPE_CATNIP =&gt; 1,
+    CARD_TYPE_ANIMALCONTROL =&gt; 1,
+    CARD_TYPE_LASERPOINTER =&gt; 1
+]);
+
+/*
+ * Card Values for Scoring (CARD_POINTS array for BGA compliance)
+ */
+$this-&gt;card_values = [
+    CARD_TYPE_KITTEN =&gt; 2,
+    CARD_TYPE_SHOWCAT =&gt; 5,     // Base value (becomes 7 with kittens)
+    CARD_TYPE_ALLEYCAT =&gt; 1,
+    CARD_TYPE_CATNIP =&gt; 1,
+    CARD_TYPE_ANIMALCONTROL =&gt; 0,
+    CARD_TYPE_LASERPOINTER =&gt; 0
+];
+
+// BGA-compatible CARD_POINTS array
+define('CARD_POINTS', [
+    CARD_TYPE_KITTEN =&gt; 2,
+    CARD_TYPE_SHOWCAT =&gt; 5,     // Show Cat scoring: 5 normally, 7 if player has Kitten
+    CARD_TYPE_ALLEYCAT =&gt; 1,
+    CARD_TYPE_CATNIP =&gt; 1,
+    CARD_TYPE_ANIMALCONTROL =&gt; 0,
+    CARD_TYPE_LASERPOINTER =&gt; 0
+]);
+
+/*
+ * Cards that have targeting effects
+ */
+$this-&gt;targeting_cards = [
+    CARD_TYPE_ALLEYCAT,
+    CARD_TYPE_CATNIP,
+    CARD_TYPE_ANIMALCONTROL
+];
+
+/*
+ * Cards that target hand vs herd
+ */
+$this-&gt;hand_targeting_cards = [
+    CARD_TYPE_ALLEYCAT,
+    CARD_TYPE_CATNIP
+];
+
+$this-&gt;herd_targeting_cards = [
+    CARD_TYPE_ANIMALCONTROL
+];
+
+/*
+ * Non-targeting cards
+ */
+$this-&gt;non_targeting_cards = [
+    CARD_TYPE_KITTEN,
+    CARD_TYPE_SHOWCAT,
+    CARD_TYPE_LASERPOINTER
+];
+
+/*
+ * Targeting Rules Array - defines what each card can target
+ */
+$this-&gt;targeting_rules = [
+    CARD_TYPE_ALLEYCAT =&gt; [
+        'requires_target' =&gt; true,
+        'target_zone' =&gt; TARGET_ZONE_HAND,
+        'target_type' =&gt; 'opponent_card',
+        'effect' =&gt; 'discard'
+    ],
+    CARD_TYPE_CATNIP =&gt; [
+        'requires_target' =&gt; true,
+        'target_zone' =&gt; TARGET_ZONE_HAND,
+        'target_type' =&gt; 'opponent_card',
+        'effect' =&gt; 'steal_to_herd'
+    ],
+    CARD_TYPE_ANIMALCONTROL =&gt; [
+        'requires_target' =&gt; true,
+        'target_zone' =&gt; TARGET_ZONE_HERD,
+        'target_type' =&gt; 'opponent_face_down_card',
+        'effect' =&gt; 'remove'
+    ],
+    CARD_TYPE_KITTEN =&gt; [
+        'requires_target' =&gt; false
+    ],
+    CARD_TYPE_SHOWCAT =&gt; [
+        'requires_target' =&gt; false,
+        'special_scoring' =&gt; 'kitten_bonus'  // 7 points if player has Kitten
+    ],
+    CARD_TYPE_LASERPOINTER =&gt; [
+        'requires_target' =&gt; false,
+        'special_ability' =&gt; 'intercept'
+    ]
+];
+
+/*
+ * Hand bonus calculation
+ * For each player still with cards in hand at game end:
+ * Add 1 point per 2 cards in hand (rounded up)
+ */
+$this-&gt;hand_bonus_table = [
+    0 =&gt; 0,   // 0 cards = +0 points
+    1 =&gt; 1,   // 1 card = +1 point  
+    2 =&gt; 1,   // 2 cards = +1 point
+    3 =&gt; 2,   // 3 cards = +2 points
+    4 =&gt; 2,   // 4 cards = +2 points
+    5 =&gt; 3,   // 5 cards = +3 points
+    6 =&gt; 3,   // 6 cards = +3 points
+    7 =&gt; 4    // 7 cards = +4 points (max starting hand)
+];
+
+/*
+ * Initial setup constants
+ */
+define('CARDS_PER_PLAYER', 9);
+define('STARTING_HAND_SIZE', 7);
+define('CARDS_REMOVED_PER_PLAYER', 2);
+
+/*
+ * Game constants
+ */
+define('MIN_PLAYERS', 2);
+define('MAX_PLAYERS', 6);
+
+/*
+ * Show Cat Scoring Logic
+ * Show Cat normally worth 5 points, but worth 7 points if player has at least one Kitten in their herd at scoring
+ */
+define('SHOWCAT_BASE_VALUE', 5);
+define('SHOWCAT_KITTEN_BONUS_VALUE', 7);
+
+
+
+/*
+ * Additional constants - safe defines to avoid redeclaration and keep schema aligned
+ */
+if (!defined('CARD_TYPE_KITTEN')) define('CARD_TYPE_KITTEN', 1);
+if (!defined('CARD_TYPE_SHOWCAT')) define('CARD_TYPE_SHOWCAT', 2);
+if (!defined('CARD_TYPE_ALLEYCAT')) define('CARD_TYPE_ALLEYCAT', 3);
+if (!defined('CARD_TYPE_CATNIP')) define('CARD_TYPE_CATNIP', 4);
+if (!defined('CARD_TYPE_ANIMALCONTROL')) define('CARD_TYPE_ANIMALCONTROL', 5);
+if (!defined('CARD_TYPE_LASERPOINTER')) define('CARD_TYPE_LASERPOINTER', 6);
+
+if (!defined('CARD_LOCATION_DECK')) define('CARD_LOCATION_DECK', 'deck');
+if (!defined('CARD_LOCATION_HAND')) define('CARD_LOCATION_HAND', 'hand');
+if (!defined('CARD_LOCATION_HERD_DOWN')) define('CARD_LOCATION_HERD_DOWN', 'herd_down');
+if (!defined('CARD_LOCATION_HERD_UP')) define('CARD_LOCATION_HERD_UP', 'herd_up');
+if (!defined('CARD_LOCATION_DISCARD')) define('CARD_LOCATION_DISCARD', 'discard');
+if (!defined('CARD_LOCATION_REMOVED')) define('CARD_LOCATION_REMOVED', 'removed');
+if (!defined('CARD_LOCATION_LIMBO')) define('CARD_LOCATION_LIMBO', 'limbo'); // temporary holding area during challenges
+
+// Pending action phases (store as integers to match DB schema)
+if (!defined('PENDING_PHASE_DECLARATION')) define('PENDING_PHASE_DECLARATION', 1);
+if (!defined('PENDING_PHASE_CHALLENGE')) define('PENDING_PHASE_CHALLENGE', 2);
+if (!defined('PENDING_PHASE_TARGET')) define('PENDING_PHASE_TARGET', 3);
+if (!defined('PENDING_PHASE_RESOLVE')) define('PENDING_PHASE_RESOLVE', 4);
+
+?&gt;</file><file path="src/herdingcats.game.php">&lt;?php
+/**
+ *------
+ * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
+ * HerdingCats implementation : © &lt;Your name here&gt; &lt;Your email address here&gt;
+ *
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ *
+ * herdingcats.game.php
+ *
+ * This is the main file for your game logic.
+ *
+ * In this PHP file, you are going to define the rules of the game.
+ */
+
+require_once(APP_GAMEMODULE_PATH . 'module/table/table.game.php');
+require_once('material.inc.php');
+
+class HerdingCats extends Table
+{
+    function __construct()
+    {
+        // Your global variables labels:
+        // Here, you can assign labels to global variables you are using for this game.
+        // You can use any number of global variables with IDs between 10 and 99.
+        // If your game has options (variants), you also have to associate here a label to
+        // the corresponding ID in gameoptions.inc.php.
+        // Note: afterwards, you can get/set the global variables with getGameStateValue/setGameStateInitialValue/setGameStateValue
+        parent::__construct();
+
+        self::initGameStateLabels([
+            "current_declared_card" =&gt; 10,
+            "current_declared_identity" =&gt; 11,
+            "current_target_player" =&gt; 12,
+            "current_action_id" =&gt; 13,
+            "game_phase" =&gt; 14,
+        ]);
+
+        // Create deck component for managing cards
+        $this-&gt;cards = self::getNew("module.common.deck");
+        $this-&gt;cards-&gt;init("card");
+    }
+
+    /**
+     * Debug logger - writes to Studio server logs without exposing to players
+     */
+    protected function debugLog($tag, $fields = []) {
+        $prefix = '[HerdingCats ' . $tag . '] ';
+        $payload = json_encode($fields);
+        if (method_exists($this, 'trace')) {
+            $this-&gt;trace($prefix . $payload);
+        } else {
+            error_log($prefix . $payload);
+        }
+    }
+
+
+    protected function getGameName()
+    {
+        // Used for translations and stuff. Please do not modify.
+        return "herdingcats";
+    }
+
+    /*
+        setupNewGame:
+        
+        This method is called only once, when a new game is launched.
+        In this method, you must setup the game according to the game rules, so that
+        the game is ready to be played.
+    */
+    protected function setupNewGame($players, $options = [])
+    {
+        // Set the colors of the players with HTML color code
+        // The default below is red/green/blue/orange/brown
+        // The number of colors defined here must correspond to the maximum number of players allowed for the game
+        $gameinfos = self::getGameinfos();
+        $default_colors = $gameinfos['player_colors'];
+
+        // Create players
+        $sql = "INSERT INTO player (player_id, player_color, player_canal, player_name, player_avatar) VALUES ";
+        $values = [];
+        foreach ($players as $player_id =&gt; $player) {
+            $color = array_shift($default_colors);
+            $values[] = "('" . $player_id . "','" . $color . "','" . $player['player_canal'] . "','" . addslashes($player['player_name']) . "','" . addslashes($player['player_avatar']) . "')";
+        }
+        $sql .= implode(',', $values);
+        self::DbQuery($sql);
+        self::reattributeColorsBasedOnPreferences($players, $gameinfos['player_colors']);
+        self::reloadPlayersBasicInfos();
+
+        /************ Start the game initialization *****/
+
+        // Init global values with their initial values
+        self::setGameStateInitialValue('current_declared_card', 0);
+        self::setGameStateInitialValue('current_declared_identity', 0);
+        self::setGameStateInitialValue('current_target_player', 0);
+        self::setGameStateInitialValue('current_action_id', 0);
+        self::setGameStateInitialValue('game_phase', 0);
+
+        // Init game statistics
+        // (note: statistics used in this file must be defined in your stats.json file)
+        //self::initStat('table', 'table_teststat1', 0);    // Init a table statistics
+        //self::initStat('player', 'player_teststat1', 0);  // Init a player statistics
+
+        // Initialize pending_action table - no need for empty row with auto-increment
+
+        // Setup deck for each player - each player gets their OWN 9-card subset
+        $all_cards = [];
+        foreach ($players as $player_id =&gt; $player) {
+            // Create 9-card deck per player using DECK_PER_PLAYER constant
+            foreach (DECK_PER_PLAYER as $card_type =&gt; $count) {
+                for ($i = 0; $i &lt; $count; $i++) {
+                    $all_cards[] = [
+                        'type' =&gt; $card_type,
+                        'type_arg' =&gt; $player_id, // Each card belongs to a specific player
+                        'nbr' =&gt; 1
+                    ];
+                }
+            }
+        }
+        
+        // Create all cards in deck
+        $this-&gt;cards-&gt;createCards($all_cards, CARD_LOCATION_DECK);
+        
+        // Now deal cards for each player separately
+        foreach ($players as $player_id =&gt; $player) {
+            // Get all cards that belong to this player
+            $all_cards_in_deck = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_DECK);
+            $player_cards = [];
+            
+            foreach ($all_cards_in_deck as $card) {
+                if ($card['type_arg'] == $player_id) {
+                    $player_cards[] = $card;
+                }
+            }
+            
+            // Shuffle this player's cards
+            shuffle($player_cards);
+            
+            // Deal 7 cards to hand for this player
+            for ($i = 0; $i &lt; STARTING_HAND_SIZE &amp;&amp; $i &lt; count($player_cards); $i++) {
+                $this-&gt;cards-&gt;moveCard($player_cards[$i]['id'], CARD_LOCATION_HAND, $player_id);
+            }
+            
+            // Remove 2 cards per player  
+            for ($i = STARTING_HAND_SIZE; $i &lt; STARTING_HAND_SIZE + CARDS_REMOVED_PER_PLAYER &amp;&amp; $i &lt; count($player_cards); $i++) {
+                $this-&gt;cards-&gt;moveCard($player_cards[$i]['id'], CARD_LOCATION_REMOVED, $player_id);
+            }
+        }
+
+        // Activate first player (which is in general a good idea :) )
+        $this-&gt;activeNextPlayer();
+
+        /************ End of the game initialization *****/
+    }
+
+    /*
+        getAllDatas: 
+        
+        Gather all information about current game situation (visible by the current player).
+        
+        The method is called each time the game interface is displayed to a player, ie:
+        _ when the game starts
+        _ when a player refreshes the game page (F5)
+    */
+    protected function getAllDatas()
+    {
+        $result = [];
+
+        $current_player_id = self::getCurrentPlayerId();    // !! We must only return information visible by this player !!
+
+        // Get information about players
+        // Note: you can retrieve some extra field you added for "player" table in "dbmodel.sql" if you need it.
+        $sql = "SELECT player_id id, player_score score FROM player ";
+        $result['players'] = self::getCollectionFromDb($sql);
+
+        // TODO: Gather all information about current game situation (visible by player $current_player_id).
+
+        // EDGE CASE FIX: Make sure limbo cards are never visible in getAllDatas
+        // Get current player's hand (only visible to them) - privacy fix
+        $result['hand'] = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HAND, $current_player_id);
+        
+        // For all other players, only return hand count, not actual cards
+
+        // Get all herds (provide arrays the client can rebuild on refresh)
+        // face_down: array of { id } (no types for privacy)
+        // face_up: array of { id, type }
+        $result['herds'] = [];
+        foreach ($result['players'] as $player_id =&gt; $player_info) {
+            $herd_down_assoc = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HERD_DOWN, $player_id);
+            $herd_up_list = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HERD_UP, $player_id);
+
+            // Normalize face-down to simple array of ids
+            $face_down = [];
+            foreach ($herd_down_assoc as $card_id =&gt; $card) {
+                $face_down[] = [ 'id' =&gt; intval($card['id']) ];
+            }
+
+            // Normalize face-up to include id and type (other fields ignored by client)
+            $face_up = [];
+            foreach ($herd_up_list as $card) {
+                $face_up[] = [ 'id' =&gt; intval($card['id']), 'type' =&gt; intval($card['type']) ];
+            }
+
+            $result['herds'][$player_id] = [
+                'face_down' =&gt; $face_down,
+                'face_up' =&gt; $face_up,
+            ];
+        }
+
+        // Get all discard piles
+        $result['discards'] = [];
+        foreach ($result['players'] as $player_id =&gt; $player_info) {
+            $result['discards'][$player_id] = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_DISCARD, $player_id);
+        }
+
+        // Get hand counts for all players (provide both snake_case and camelCase for client compat)
+        $result['hand_counts'] = [];
+        $result['handCounts'] = [];
+        foreach ($result['players'] as $player_id =&gt; $player_info) {
+            $cnt = $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $player_id);
+            $result['hand_counts'][$player_id] = $cnt;
+            $result['handCounts'][$player_id] = $cnt;
+        }
+
+        // Provide scores map for client counters (optional convenience)
+        $result['scores'] = [];
+        foreach ($result['players'] as $player_id =&gt; $player_info) {
+            $result['scores'][$player_id] = intval($player_info['score']);
+        }
+
+        // Get current game phase and pending actions if any
+        $result['game_phase'] = self::getGameStateValue('game_phase');
+        $current_action_id = self::getGameStateValue('current_action_id');
+        if ($current_action_id &gt; 0) {
+            $result['current_action'] = $this-&gt;pullPending(); // Use proper pending action retrieval
+        }
+
+        return $result;
+    }
+
+    /*
+        getGameProgression:
+        
+        Compute and return the current game progression.
+        The number returned must be an integer beween 0 (=the game just started) and
+        100 (= the game is finished or almost finished).
+    
+        This method is called each time we are in a game state with the "updateGameProgression" property set to true 
+        (see states.inc.php)
+    */
+    function getGameProgression()
+    {
+        // TODO: compute and return the game progression
+        
+        // Calculate based on cards played
+        $total_cards_in_hands = 0;
+        $total_starting_cards = 0;
+        
+        $players = self::loadPlayersBasicInfos();
+        foreach ($players as $player_id =&gt; $player_info) {
+            $cards_in_hand = $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $player_id);
+            $total_cards_in_hands += $cards_in_hand;
+            $total_starting_cards += STARTING_HAND_SIZE;
+        }
+        
+        // Progress based on how many cards have been played from hands
+        $cards_played = $total_starting_cards - $total_cards_in_hands;
+        $progression = ($cards_played * 100) / $total_starting_cards;
+        
+        return min(100, max(0, $progression));
+    }
+
+
+//////////////////////////////////////////////////////////////////////////////
+//////////// Utility functions
+////////////    
+
+    /*
+        In this space, you can put any utility methods useful for your game logic
+    */
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Stage 3: Pending Action Management
+    ////////////
+
+    /**
+     * Store declaration/challenge/intercept data in pending_action table
+     * @param array $data - Action data (actor_id, card_id, declared_type, target_player_id, etc.)
+     * @return int - Action ID for tracking
+     */
+    function pushPending($data)
+    {
+        // Get the current game ID
+        $game_id = intval(self::getGameId());
+        
+        // Prepare SQL values using correct database field names - store as integers where appropriate
+        $actor_id = intval($data['actor_id']);
+        $declared_identity = isset($data['declared_type']) ? intval($data['declared_type']) : 'NULL';
+        $played_card_id = isset($data['card_id']) ? intval($data['card_id']) : 'NULL';
+        $target_player_id = isset($data['target_player_id']) ? intval($data['target_player_id']) : 'NULL';
+        $target_zone = isset($data['target_zone']) ? "'" . addslashes($data['target_zone']) . "'" : 'NULL';
+        $phase = isset($data['phase']) ? intval($data['phase']) : PENDING_PHASE_DECLARATION;
+        
+        $sql = "INSERT INTO pending_action (game_id, actor_player_id, declared_identity, played_card_id, target_player_id, target_zone, phase) "
+             . "VALUES ($game_id, $actor_id, $declared_identity, $played_card_id, $target_player_id, $target_zone, $phase)";
+        self::DbQuery($sql);
+        
+        // Get the auto-generated action_id
+        $action_id = self::DbGetLastId();
+        
+        // Store action ID in global state for tracking
+        self::setGameStateValue('current_action_id', $action_id);
+        
+        return $action_id;
+    }
+
+
+    /**
+     * Retrieve current pending action from database
+     * @return array|null - Pending action data or null if none exists
+     */
+    function pullPending()
+    {
+        $current_action_id = self::getGameStateValue('current_action_id');
+        if ($current_action_id == 0) {
+            return null;
+        }
+        
+        $sql = "SELECT * FROM pending_action WHERE action_id = $current_action_id";
+        $result = self::getObjectFromDB($sql);
+        
+        if ($result &amp;&amp; isset($result['challengers'])) {
+            // Decode JSON arrays if they exist
+            $result['challengers'] = !empty($result['challengers']) ? json_decode($result['challengers'], true) : [];
+        }
+        if ($result &amp;&amp; isset($result['intercept_challengers'])) {
+            $result['intercept_challengers'] = !empty($result['intercept_challengers']) ? json_decode($result['intercept_challengers'], true) : [];
+        }
+        
+        return $result;
+    }
+
+    /**
+     * Clear pending action after resolution
+     */
+    function clearPending()
+    {
+        $current_action_id = self::getGameStateValue('current_action_id');
+        if ($current_action_id &gt; 0) {
+            $sql = "DELETE FROM pending_action WHERE action_id = $current_action_id";
+            self::DbQuery($sql);
+            
+            // Reset global state
+            self::setGameStateValue('current_action_id', 0);
+            self::setGameStateValue('current_declared_card', 0);
+            self::setGameStateValue('current_declared_identity', 0);
+            self::setGameStateValue('current_target_player', 0);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Stage 3: Card Utility Functions
+    ////////////
+
+    /**
+     * Get card name from type constant
+     * @param int $type - Card type constant
+     * @return string - Translated card name
+     */
+    function getCardName($type)
+    {
+        switch ($type) {
+            case CARD_TYPE_KITTEN:
+                return clienttranslate('Kitten');
+            case CARD_TYPE_SHOWCAT:
+                return clienttranslate('Show Cat');
+            case CARD_TYPE_ALLEYCAT:
+                return clienttranslate('Alley Cat');
+            case CARD_TYPE_CATNIP:
+                return clienttranslate('Catnip');
+            case CARD_TYPE_ANIMALCONTROL:
+                return clienttranslate('Animal Control');
+            case CARD_TYPE_LASERPOINTER:
+                return clienttranslate('Laser Pointer');
+            default:
+                return clienttranslate('Unknown Card');
+        }
+    }
+
+    /**
+     * Check if card type requires target selection
+     * @param int $type - Card type constant
+     * @return bool - True if card requires target
+     */
+    function isTargetedType($type)
+    {
+        return in_array($type, [CARD_TYPE_ALLEYCAT, CARD_TYPE_CATNIP, CARD_TYPE_ANIMALCONTROL]);
+    }
+
+    /**
+     * Get target zone for card type (hand/herd)
+     * @param int $type - Card type constant
+     * @return string|null - Target zone or null if not targeted
+     */
+    function getTargetZone($type)
+    {
+        switch ($type) {
+            case CARD_TYPE_ALLEYCAT:
+            case CARD_TYPE_CATNIP:
+                return TARGET_ZONE_HAND;
+            case CARD_TYPE_ANIMALCONTROL:
+                return TARGET_ZONE_HERD;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Add card to herd face-down with declared identity
+     * @param int $card_id - Card to add to herd
+     * @param int $player_id - Owner of the herd
+     * @param int $declared_type - What the card was declared as
+     */
+    function addToHerdFaceDownAs($card_id, $player_id, $declared_type)
+    {
+        // Move card to herd_down location
+        $this-&gt;cards-&gt;moveCard($card_id, CARD_LOCATION_HERD_DOWN, $player_id);
+        
+        // Store declared type using the correct database field name
+        $sql = "UPDATE card SET card_declared_identity = '$declared_type' WHERE card_id = $card_id";
+        self::DbQuery($sql);
+    }
+
+    /**
+     * Get all herd cards for a player (both face-up and face-down)
+     * @param int $player_id - Player ID
+     * @return array - Array with 'face_down' and 'face_up' card arrays
+     */
+    function getPlayerHerdCards($player_id)
+    {
+        // Get face-down cards with declared identity
+        $sql = "SELECT * FROM card WHERE card_location = '" . CARD_LOCATION_HERD_DOWN . "' AND card_location_arg = $player_id";
+        $face_down = self::getCollectionFromDb($sql);
+        
+        $face_up = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HERD_UP, $player_id);
+        
+        return [
+            'face_down' =&gt; $face_down,
+            'face_up' =&gt; $face_up
+        ];
+    }
+
+    /**
+     * Get hand cards for a player (private data)
+     * @param int $player_id - Player ID
+     * @return array - Hand cards
+     */
+    function getPlayerHandCards($player_id)
+    {
+        return $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HAND, $player_id);
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Stage 3: Notification Helpers
+    ////////////
+
+    /**
+     * Notify all players about current hand counts
+     */
+    function notifyHandCounts()
+    {
+        $players = self::loadPlayersBasicInfos();
+        $hand_counts = [];
+        
+        foreach ($players as $player_id =&gt; $player_info) {
+            $hand_counts[$player_id] = $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $player_id);
+        }
+        
+        self::notifyAllPlayers('handCountUpdate', '', [
+            'hand_counts' =&gt; $hand_counts
+        ]);
+    }
+
+    /**
+     * Notify about herd changes for a specific player
+     * @param int $player_id - Player whose herd changed
+     */
+    function notifyHerdUpdate($player_id)
+    {
+        $herd_data = $this-&gt;getPlayerHerdCards($player_id);
+        
+        // Send full data to the herd owner (including declared identities)
+        self::notifyPlayer($player_id, 'herdUpdate', '', [
+            'player_id' =&gt; $player_id,
+            'face_down_count' =&gt; count($herd_data['face_down']),
+            'face_down_cards' =&gt; $herd_data['face_down'], // Owner can see declared identities
+            'face_up_cards' =&gt; $herd_data['face_up']
+        ]);
+        
+        // Send limited data to other players (no declared identities)
+        $players = self::loadPlayersBasicInfos();
+        foreach ($players as $other_player_id =&gt; $player_info) {
+            if ($other_player_id != $player_id) {
+                self::notifyPlayer($other_player_id, 'herdUpdate', '', [
+                    'player_id' =&gt; $player_id,
+                    'face_down_count' =&gt; count($herd_data['face_down']),
+                    'face_up_cards' =&gt; $herd_data['face_up']
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Notify about discard pile changes for a specific player
+     * @param int $player_id - Player whose discard changed
+     */
+    function notifyDiscardUpdate($player_id)
+    {
+        $discard_cards = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_DISCARD, $player_id);
+        
+        self::notifyAllPlayers('discardUpdate', '', [
+            'player_id' =&gt; $player_id,
+            'discard_cards' =&gt; $discard_cards
+        ]);
+    }
+
+    /**
+     * Notify private card information to specific player
+     * @param int $player_id - Player to notify
+     * @param int $card_id - Card to reveal
+     * @param string $context - Context of reveal (challenge, effect, etc.)
+     */
+    function notifyPrivateCardReveal($player_id, $card_id, $context = 'reveal')
+    {
+        $card = $this-&gt;cards-&gt;getCard($card_id);
+        if ($card) {
+            self::notifyPlayer($player_id, 'privateCardRevealed',
+                clienttranslate('Card revealed: ${card_name}'),
+                [
+                    'card_id' =&gt; $card_id,
+                    'card_type' =&gt; $card['type'],
+                    'card_name' =&gt; $this-&gt;getCardName($card['type']),
+                    'context' =&gt; $context
+                ]
+            );
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Stage 3: Validation Helpers
+    ////////////
+
+    /**
+     * Check if a player can challenge an action
+     * @param int $player_id - Player attempting to challenge
+     * @param int $actor_id - Player who made the original action
+     * @return bool - True if challenge is valid
+     */
+    function canPlayerChallenge($player_id, $actor_id)
+    {
+        // Cannot challenge yourself
+        if ($player_id == $actor_id) {
+            return false;
+        }
+        
+        // SIMPLIFIED: Allow all other players to challenge for testing
+        // Original: return $this-&gt;hasCardsInHand($player_id);
+        return true;  // Allow all other players to challenge
+    }
+
+    /**
+     * Validate hand target selection for card effects
+     * @param int $target_player_id - Player being targeted
+     * @param int $acting_card_type - Type of card being played
+     * @return bool - True if target is valid
+     */
+    function validateHandTarget($target_player_id, $acting_card_type)
+    {
+        // Check if this card type can target hands
+        $expected_zone = $this-&gt;getTargetZone($acting_card_type);
+        if ($expected_zone !== TARGET_ZONE_HAND) {
+            return false;
+        }
+        
+        // Check if target player has cards in hand
+        return $this-&gt;hasCardsInHand($target_player_id);
+    }
+    
+    /**
+     * Validate herd target selection for card effects
+     * @param int $target_card_id - Specific card being targeted
+     * @param int $acting_card_type - Type of card being played
+     * @return bool - True if target is valid
+     */
+    function validateHerdTarget($target_card_id, $acting_card_type)
+    {
+        // Check if this card type can target herds
+        $expected_zone = $this-&gt;getTargetZone($acting_card_type);
+        if ($expected_zone !== TARGET_ZONE_HERD) {
+            return false;
+        }
+        
+        // Check if target card exists and is face-down in herd
+        $card = $this-&gt;cards-&gt;getCard($target_card_id);
+        return $card &amp;&amp; $card['location'] === CARD_LOCATION_HERD_DOWN;
+    }
+
+    /**
+     * Check if player has cards in hand
+     * @param int $player_id - Player to check
+     * @return bool - True if player has cards
+     */
+    function hasCardsInHand($player_id)
+    {
+        return $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $player_id) &gt; 0;
+    }
+
+    /**
+     * Get player name by ID
+     * @param int $player_id - Player ID
+     * @return string - Player name
+     */
+    function getPlayerNameById($player_id)
+    {
+        $players = self::loadPlayersBasicInfos();
+        return isset($players[$player_id]) ? $players[$player_id]['player_name'] : 'Unknown Player';
+    }
+    
+    function getPlayerName($player_id)
+    {
+        return $this-&gt;getPlayerNameById($player_id);
+    }
+    
+    function getCardTypeName($card_type)
+    {
+        $card_names = [
+            CARD_TYPE_KITTEN =&gt; clienttranslate('Kitten'),
+            CARD_TYPE_SHOWCAT =&gt; clienttranslate('Show Cat'),
+            CARD_TYPE_ALLEYCAT =&gt; clienttranslate('Alley Cat'),
+            CARD_TYPE_CATNIP =&gt; clienttranslate('Catnip'),
+            CARD_TYPE_ANIMALCONTROL =&gt; clienttranslate('Animal Control'),
+            CARD_TYPE_LASERPOINTER =&gt; clienttranslate('Laser Pointer')
+        ];
+        
+        return $card_names[$card_type] ?? clienttranslate('Unknown Card');
+    }
+    
+    function cardRequiresTargeting($card_type)
+    {
+        $targeting_cards = [
+            CARD_TYPE_ALLEYCAT,
+            CARD_TYPE_CATNIP,
+            CARD_TYPE_ANIMALCONTROL
+        ];
+        
+        return in_array($card_type, $targeting_cards);
+    }
+    
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Stage 5: Card Effect Helper Functions
+    ////////////
+    
+    /**
+     * Apply Alley Cat effect - force target to discard a card from hand
+     * @param int $target_player_id - Player to target
+     * @param int $target_card_id - Specific card (null for random selection)
+     */
+    function applyAlleyCatEffect($target_player_id, $target_card_id = null)
+    {
+        $target_cards = $this-&gt;getPlayerHandCards($target_player_id);
+        
+        if (empty($target_cards)) {
+            self::notifyAllPlayers('effectIneffective',
+                clienttranslate('Alley Cat has no effect - ${target_name} has no cards to discard'),
+                [
+                    'target_id' =&gt; $target_player_id,
+                    'target_name' =&gt; self::getPlayerNameById($target_player_id)
+                ]
+            );
+            return;
+        }
+        
+        // Check for ineffective-against-itself rule
+        if ($this-&gt;checkIneffectiveAgainstItself(CARD_TYPE_ALLEYCAT, $target_cards)) {
+            return; // Effect was ineffective, notification sent by check function
+        }
+        
+        // Select card to discard (random if not specified)
+        if ($target_card_id === null) {
+            $target_cards_array = array_values($target_cards);
+            $card_to_discard = $target_cards_array[array_rand($target_cards_array)];
+        } else {
+            $card_to_discard = $this-&gt;cards-&gt;getCard($target_card_id);
+        }
+        
+        // Discard the selected card
+        $this-&gt;cards-&gt;moveCard($card_to_discard['id'], CARD_LOCATION_DISCARD, $target_player_id);
+        
+        // Notify effect resolution
+        self::notifyAllPlayers('alleyCatEffect',
+            clienttranslate('Alley Cat forces ${target_name} to discard ${card_name}'),
+            [
+                'effect_type' =&gt; 'alleycat',
+                'target_id' =&gt; $target_player_id,
+                'target_name' =&gt; self::getPlayerNameById($target_player_id),
+                'card_name' =&gt; $this-&gt;getCardName($card_to_discard['type']),
+                'discarded_card_id' =&gt; $card_to_discard['id'],
+                'card_type' =&gt; $card_to_discard['type']
+            ]
+        );
+        
+        // Private notification to reveal discarded card to all players
+        self::notifyAllPlayers('cardMoved',
+            '',
+            [
+                'card_id' =&gt; $card_to_discard['id'],
+                'from_location' =&gt; 'hand',
+                'to_location' =&gt; 'discard',
+                'from_player_id' =&gt; $target_player_id,
+                'to_player_id' =&gt; $target_player_id
+            ]
+        );
+        
+        $this-&gt;notifyHandCounts();
+        $this-&gt;notifyDiscardUpdate($target_player_id);
+    }
+    
+    /**
+     * Apply Catnip effect - steal a card from target hand to actor's herd
+     * @param int $target_player_id - Player to steal from
+     * @param int $target_card_id - Specific card (null for random selection)
+     * @param int $actor_id - Player stealing the card
+     */
+    function applyCatnipEffect($target_player_id, $target_card_id = null, $actor_id)
+    {
+        $target_cards = $this-&gt;getPlayerHandCards($target_player_id);
+        
+        if (empty($target_cards)) {
+            self::notifyAllPlayers('effectIneffective',
+                clienttranslate('Catnip has no effect - ${target_name} has no cards to steal'),
+                [
+                    'target_id' =&gt; $target_player_id,
+                    'target_name' =&gt; self::getPlayerNameById($target_player_id)
+                ]
+            );
+            return;
+        }
+        
+        // Check for ineffective-against-itself rule
+        if ($this-&gt;checkIneffectiveAgainstItself(CARD_TYPE_CATNIP, $target_cards)) {
+            return; // Effect was ineffective, notification sent by check function
+        }
+        
+        // Select card to steal (random if not specified)
+        if ($target_card_id === null) {
+            $target_cards_array = array_values($target_cards);
+            $card_to_steal = $target_cards_array[array_rand($target_cards_array)];
+        } else {
+            $card_to_steal = $this-&gt;cards-&gt;getCard($target_card_id);
+        }
+        
+        // Move card to actor's herd face-down
+        $this-&gt;cards-&gt;moveCard($card_to_steal['id'], CARD_LOCATION_HERD_DOWN, $actor_id);
+        
+        // Set the card's declared identity to its actual type when stolen
+        $sql = "UPDATE card SET card_declared_identity = '" . $card_to_steal['type'] . "' WHERE card_id = " . $card_to_steal['id'];
+        self::DbQuery($sql);
+        
+        // Notify effect resolution
+        self::notifyAllPlayers('catnipEffect',
+            clienttranslate('Catnip steals ${card_name} from ${target_name} to ${actor_name}\'s herd'),
+            [
+                'effect_type' =&gt; 'catnip',
+                'target_id' =&gt; $target_player_id,
+                'target_name' =&gt; self::getPlayerNameById($target_player_id),
+                'actor_id' =&gt; $actor_id,
+                'actor_name' =&gt; self::getPlayerNameById($actor_id),
+                'card_name' =&gt; $this-&gt;getCardName($card_to_steal['type']),
+                'stolen_card_id' =&gt; $card_to_steal['id'],
+                'card_type' =&gt; $card_to_steal['type']
+            ]
+        );
+        
+        // Private notification to reveal stolen card to all players
+        self::notifyAllPlayers('cardMoved',
+            '',
+            [
+                'card_id' =&gt; $card_to_steal['id'],
+                'from_location' =&gt; 'hand',
+                'to_location' =&gt; 'herd_down',
+                'from_player_id' =&gt; $target_player_id,
+                'to_player_id' =&gt; $actor_id
+            ]
+        );
+        
+        $this-&gt;notifyHandCounts();
+        $this-&gt;notifyHerdUpdate($actor_id);
+    }
+    
+    /**
+     * Apply Animal Control effect - remove a face-down card from target herd
+     * @param int $target_card_id - Specific card to remove
+     */
+    function applyAnimalControlEffect($target_card_id)
+    {
+        $target_card = $this-&gt;cards-&gt;getCard($target_card_id);
+        
+        if (!$target_card || $target_card['location'] != CARD_LOCATION_HERD_DOWN) {
+            self::notifyAllPlayers('effectIneffective',
+                clienttranslate('Animal Control has no effect - target card not found'),
+                []
+            );
+            return;
+        }
+        
+        $target_player_id = $target_card['location_arg'];
+        
+        // Check for ineffective-against-itself rule
+        if ($target_card['type'] == CARD_TYPE_ANIMALCONTROL) {
+            // Flip face-up and make it protected instead of removing
+            $this-&gt;cards-&gt;moveCard($target_card_id, CARD_LOCATION_HERD_UP, $target_player_id);
+            
+            self::notifyAllPlayers('animalControlIneffective',
+                clienttranslate('Animal Control is ineffective against itself - target Animal Control flips face-up and becomes protected'),
+                [
+                    'effect_type' =&gt; 'animalcontrol_ineffective',
+                    'target_id' =&gt; $target_player_id,
+                    'target_name' =&gt; self::getPlayerNameById($target_player_id),
+                    'card_id' =&gt; $target_card_id,
+                    'card_name' =&gt; $this-&gt;getCardName(CARD_TYPE_ANIMALCONTROL)
+                ]
+            );
+            
+            // Notify card movement from face-down to face-up
+            self::notifyAllPlayers('cardMoved',
+                '',
+                [
+                    'card_id' =&gt; $target_card_id,
+                    'from_location' =&gt; 'herd_down',
+                    'to_location' =&gt; 'herd_up',
+                    'from_player_id' =&gt; $target_player_id,
+                    'to_player_id' =&gt; $target_player_id
+                ]
+            );
+            
+            $this-&gt;notifyHerdUpdate($target_player_id);
+            return;
+        }
+        
+        // Remove the card from the game
+        $this-&gt;cards-&gt;moveCard($target_card_id, CARD_LOCATION_REMOVED, $target_player_id);
+        
+        // Notify effect resolution
+        self::notifyAllPlayers('animalControlEffect',
+            clienttranslate('Animal Control removes ${card_name} from ${target_name}\'s herd'),
+            [
+                'effect_type' =&gt; 'animalcontrol',
+                'target_id' =&gt; $target_player_id,
+                'target_name' =&gt; self::getPlayerNameById($target_player_id),
+                'card_name' =&gt; $this-&gt;getCardName($target_card['type']),
+                'removed_card_id' =&gt; $target_card_id,
+                'card_type' =&gt; $target_card['type']
+            ]
+        );
+        
+        // Private notification to reveal removed card to all players
+        self::notifyAllPlayers('cardMoved',
+            '',
+            [
+                'card_id' =&gt; $target_card_id,
+                'from_location' =&gt; 'herd_down',
+                'to_location' =&gt; 'removed',
+                'from_player_id' =&gt; $target_player_id,
+                'to_player_id' =&gt; $target_player_id
+            ]
+        );
+        
+        $this-&gt;notifyHerdUpdate($target_player_id);
+    }
+    
+    /**
+     * Check ineffective-against-itself rule for hand-targeting cards
+     * @param int $acting_type - Type of card being played
+     * @param array $target_cards - Cards in target's hand
+     * @return bool - True if effect was ineffective
+     */
+    function checkIneffectiveAgainstItself($acting_type, $target_cards)
+    {
+        // Only applies to hand-targeting cards
+        if (!in_array($acting_type, [CARD_TYPE_ALLEYCAT, CARD_TYPE_CATNIP])) {
+            return false;
+        }
+        
+        // Check if target hand contains the same type as acting card
+        foreach ($target_cards as $card) {
+            if ($card['type'] == $acting_type) {
+                // Return the card to hand (it's already there)
+                $effect_name = ($acting_type == CARD_TYPE_ALLEYCAT) ? 'Alley Cat' : 'Catnip';
+                
+                self::notifyAllPlayers('effectIneffectiveAgainstItself',
+                    clienttranslate('${effect} is ineffective against itself - no effect'),
+                    [
+                        'effect' =&gt; $effect_name,
+                        'target_id' =&gt; $card['location_arg'],
+                        'target_name' =&gt; self::getPlayerNameById($card['location_arg'])
+                    ]
+                );
+                
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Calculate final score for a player
+     * @param int $player_id - Player ID
+     * @return int - Total score
+     */
+    function calculatePlayerScore($player_id)
+    {
+        $score = 0;
+        $has_kitten = false;
+        
+        // Get all cards in player's herd (both face-up and face-down)
+        $herd_cards = array_merge(
+            $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HERD_DOWN, $player_id),
+            $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HERD_UP, $player_id)
+        );
+        
+        // Check if player has any Kitten for Show Cat bonus
+        foreach ($herd_cards as $card) {
+            if ($card['type'] == CARD_TYPE_KITTEN) {
+                $has_kitten = true;
+                break;
+            }
+        }
+        
+        // Calculate herd score
+        foreach ($herd_cards as $card) {
+            if ($card['type'] == CARD_TYPE_SHOWCAT) {
+                // Show Cat: 5 normally, 7 if player has any Kitten
+                $score += $has_kitten ? SHOWCAT_KITTEN_BONUS_VALUE : SHOWCAT_BASE_VALUE;
+            } else {
+                // All other cards use their base values
+                $score += CARD_POINTS[$card['type']];
+            }
+        }
+        
+        // Add hand bonus: +1 per 2 cards in hand (rounded up)
+        $cards_in_hand = $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $player_id);
+        $hand_bonus = ceil($cards_in_hand / 2);
+        $score += $hand_bonus;
+        
+        return $score;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    //////////// Stage 3: Game State Helpers
+    ////////////
+
+    /**
+     * Get players who can participate in challenge (excludes actor)
+     * @return array - Array of player IDs who can challenge
+     */
+    function getActiveChallengeParticipants()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            return [];
+        }
+        
+        $participants = [];
+        $players = self::loadPlayersBasicInfos();
+        
+        foreach ($players as $player_id =&gt; $player_info) {
+            // Use the correct field name from database schema
+            if ($this-&gt;canPlayerChallenge($player_id, $pending['actor_player_id'])) {
+                $participants[] = $player_id;
+            }
+        }
+        
+        return $participants;
+    }
+
+    /**
+     * Set up challenge window - make all eligible players active except the actor
+     * @param int $exclude_player_id - Player to exclude from challenge window (usually the actor)
+     */
+    function setMultipleActivePlayersForChallenge($exclude_player_id)
+    {
+        $players = self::loadPlayersBasicInfos();
+        $active_players = [];
+        
+        foreach ($players as $player_id =&gt; $player_info) {
+            if ($player_id != $exclude_player_id &amp;&amp; $this-&gt;hasCardsInHand($player_id)) {
+                $active_players[] = $player_id;
+            }
+        }
+        
+        if (!empty($active_players)) {
+            $this-&gt;gamestate-&gt;setPlayersMultiactive($active_players, '', true);
+        }
+    }
+
+    /**
+     * Check if game should end (any player has 0 cards in hand)
+     * @return bool - True if game should end
+     */
+    function checkGameEndCondition()
+    {
+        $players = self::loadPlayersBasicInfos();
+        
+        foreach ($players as $player_id =&gt; $player_info) {
+            // Game ends when any player has exactly 0 cards in HAND specifically
+            $cards_in_hand = $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $player_id);
+            if ($cards_in_hand == 0) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//////////// Player actions
+//////////// 
+
+    /*
+        Each time a player is doing some game action, one of the methods below is called.
+        (note: each method below must match an input method in herdingcats.action.php)
+    */
+
+    /*
+    
+    Example:
+
+    function actPlayCard($card_id)
+    {
+        // Check that this is the player's turn and that it is a "possible action" at this game state (see states.inc.php)
+        self::checkAction('playCard'); 
+        
+        $player_id = self::getActivePlayerId();
+        
+        // Add your game logic to play a card here
+        ...
+        
+        // Notify all players about the card played
+        self::notifyAllPlayers("cardPlayed", clienttranslate('${player_name} plays ${card_name}'), array(
+            'player_id' =&gt; $player_id,
+            'player_name' =&gt; self::getActivePlayerName(),
+            'card_name' =&gt; $card_name,
+            'card_id' =&gt; $card_id
+        ));
+          
+        // Next, go to the next state
+        $this-&gt;gamestate-&gt;nextState( 'playCard' );
+    }
+    
+    */
+
+    // TODO: Stage 3-5 action implementations will go here
+    function actDeclare($card_id, $declared_type, $target_player_id = null)
+    {
+        // Match states.inc.php possible action name
+        self::checkAction('actDeclare');
+        $player_id = self::getActivePlayerId();
+        
+        // Validate card is in player's hand
+        $card = $this-&gt;cards-&gt;getCard($card_id);
+        if (!$card || $card['location'] != CARD_LOCATION_HAND || $card['location_arg'] != $player_id) {
+            throw new feException("Card not in your hand");
+        }
+        
+                // Debug - log declaration with actual card type
+        $this-&gt;debugLog('DECLARE', [
+            'actor_id' =&gt; $player_id,
+            'played_card_id' =&gt; $card_id,
+            'declared_type' =&gt; intval($declared_type),
+            'actual_type' =&gt; intval($card['type'])
+        ]);
+
+        // Create a pending action for the challenge system
+        $action_id = $this-&gt;pushPending([
+            'actor_id' =&gt; $player_id,  // Changed from actor_player_id to actor_id
+            'declared_type' =&gt; $declared_type,  // Changed from declared_identity to declared_type
+            'card_id' =&gt; $card_id,  // Changed from played_card_id to card_id
+            'target_player_id' =&gt; $target_player_id,
+            'phase' =&gt; PENDING_PHASE_CHALLENGE
+        ]);
+        
+        // Store the action ID for later retrieval
+        self::setGameStateValue('current_action_id', $action_id);
+        
+        // Move card from hand to herd (face down for now)
+        $this-&gt;cards-&gt;moveCard($card_id, CARD_LOCATION_LIMBO, $player_id);
+        
+        // Notify all players that a card was played
+        self::notifyAllPlayers('cardPlayed', 
+            clienttranslate('${player_name} plays a card to their herd'), 
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getActivePlayerName(),
+                'card_id' =&gt; $card_id,
+                'card' =&gt; $card,
+                'declared_type' =&gt; $declared_type,
+                'hand_counts' =&gt; $this-&gt;getHandCounts()
+            ]
+        );
+        
+        // Update herd display for the player
+        // herdUpdate moved to challenge resolution
+        // Notify hand count update
+        $this-&gt;notifyHandCounts();
+        
+        // Decide next state: if declared type requires targeting, go pick target first; else go to challenge window
+        if ($this-&gt;cardRequiresTargeting(intval($declared_type))) {
+            $this-&gt;gamestate-&gt;nextState('declaredToTarget');
+        } else {
+            $this-&gt;gamestate-&gt;nextState('declaredToChallenge');
+        }
+    }
+
+    function actChallenge($actor_id)
+    {
+        self::checkAction('actChallenge');
+        // In MULTIPLE_ACTIVE, challenger is the current player, not the turn's active player
+        $player_id = self::getCurrentPlayerId();
+        
+        // Validate player can challenge
+        if (!$this-&gt;canPlayerChallenge($player_id, $actor_id)) {
+            throw new feException("Cannot challenge this action");
+        }
+        
+        $pending = $this-&gt;pullPending();
+        if (!$pending || $pending['actor_player_id'] != $actor_id) {
+            throw new feException("Invalid challenge target");
+        }
+        
+        // Add player to challengers list (be robust: pending may already be decoded)
+        if (!isset($pending['challengers']) || empty($pending['challengers'])) {
+            $challengers = [];
+        } else if (is_array($pending['challengers'])) {
+            $challengers = $pending['challengers'];
+        } else {
+            $challengers = json_decode($pending['challengers'], true) ?: [];
+        }
+        if (!in_array($player_id, $challengers)) {
+            $challengers[] = $player_id;
+            
+            // Update pending action
+            $sql = "UPDATE pending_action SET challengers = '" . addslashes(json_encode($challengers)) . "' WHERE action_id = " . $pending['action_id'];
+            self::DbQuery($sql);
+        }
+        
+        // Notify challenge declared
+        self::notifyAllPlayers('challengeDeclared',
+            clienttranslate('${player_name} challenges the declaration'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getPlayerNameById($player_id),
+                'actor_id' =&gt; $actor_id,
+                'actor_name' =&gt; self::getPlayerNameById($actor_id)
+            ]
+        );
+        
+        // Immediately jump to resolve challenge
+        $this-&gt;gamestate-&gt;setPlayerNonMultiactive($player_id, 'challenged');
+    }
+
+    function actPassChallenge()
+    {
+        self::checkAction('actPassChallenge');
+        // In MULTIPLE_ACTIVE, passer is the current player, not the turn's active player
+        $player_id = self::getCurrentPlayerId();
+        
+        // Notify pass
+        self::notifyAllPlayers('challengePassed',
+            clienttranslate('${player_name} passes on challenging'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getPlayerNameById($player_id)
+            ]
+        );
+        
+        // When all pass, transition handled by setPlayersMultiactive common transition
+        $this-&gt;gamestate-&gt;setPlayerNonMultiactive($player_id, '');
+    }
+
+    function actSelectBlindFromActor($card_index)
+    {
+        self::checkAction('actSelectBlindFromActor');
+        $player_id = self::getActivePlayerId();
+        
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            throw new feException("No pending action");
+        }
+        
+        $actor_id = $pending['actor_player_id'];
+        $actor_cards = $this-&gt;getPlayerHandCards($actor_id);
+        $actor_cards = array_values($actor_cards);
+        
+        if ($card_index &lt; 0 || $card_index &gt;= count($actor_cards)) {
+            throw new feException("Invalid card index");
+        }
+        
+        $selected_card = $actor_cards[$card_index];
+        
+        // Apply bluff penalty - discard both cards
+        $limbo_card = $this-&gt;cards-&gt;getCard($pending['played_card_id']);
+        
+        $this-&gt;cards-&gt;moveCard($limbo_card['id'], CARD_LOCATION_DISCARD, $actor_id);
+        $this-&gt;cards-&gt;moveCard($selected_card['id'], CARD_LOCATION_DISCARD, $actor_id);
+        
+        // Notify penalty
+        self::notifyAllPlayers('bluffPenaltyApplied',
+            clienttranslate('${player_name} selects a card from ${actor_name}. Both cards discarded for bluffing.'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getPlayerNameById($player_id),
+                'actor_id' =&gt; $actor_id,
+                'actor_name' =&gt; self::getPlayerNameById($actor_id),
+                'discarded_cards' =&gt; [$limbo_card['id'], $selected_card['id']]
+            ]
+        );
+        
+        $this-&gt;notifyHandCounts();
+        $this-&gt;notifyDiscardUpdate($actor_id);
+        
+        // Clear pending and end turn
+        $this-&gt;clearPending();
+        $this-&gt;gamestate-&gt;nextState('penaltyApplied');
+    }
+
+    function actSelectBlindFromChallenger($challenger_id, $card_index)
+    {
+        self::checkAction('actSelectBlindFromChallenger');
+        $player_id = self::getActivePlayerId();
+        
+        $pending = $this-&gt;pullPending();
+        if (!$pending || $pending['actor_player_id'] != $player_id) {
+            throw new feException("Invalid action");
+        }
+        
+        $challenger_cards = $this-&gt;getPlayerHandCards($challenger_id);
+        $challenger_cards = array_values($challenger_cards);
+        
+        if ($card_index &lt; 0 || $card_index &gt;= count($challenger_cards)) {
+            throw new feException("Invalid card index");
+        }
+        
+        $selected_card = $challenger_cards[$card_index];
+        
+        // Apply truth penalty - challenger discards
+        $this-&gt;cards-&gt;moveCard($selected_card['id'], CARD_LOCATION_DISCARD, $challenger_id);
+
+        self::notifyAllPlayers('cardRemoved', '', [
+            'player_id' =&gt; $challenger_id,
+            'card_id' =&gt; $selected_card['id'],
+            'from_zone' =&gt; 'hand'
+        ]);
+        
+        // Notify penalty
+        self::notifyAllPlayers('truthPenaltyApplied',
+            clienttranslate('${actor_name} selects a card from ${challenger_name}. ${challenger_name} discards for false challenge.'),
+            [
+                'player_id' =&gt; $player_id,
+                'actor_name' =&gt; self::getPlayerNameById($player_id),
+                'challenger_id' =&gt; $challenger_id,
+                'challenger_name' =&gt; self::getPlayerNameById($challenger_id),
+                'discarded_card' =&gt; $selected_card['id']
+            ]
+        );
+        
+        $this-&gt;notifyHandCounts();
+        $this-&gt;notifyDiscardUpdate($challenger_id);
+        
+        // Check if more challengers to process
+        $challengers = is_array($pending['challengers'])
+            ? $pending['challengers']
+            : (empty($pending['challengers']) ? [] : json_decode($pending['challengers'], true));
+        $current_index = array_search($challenger_id, $challengers);
+        
+        // For now, proceed to resolution after applying penalty (non-targeted Kitten path)
+        $this-&gt;gamestate-&gt;nextState('toResolve');
+    }
+
+    function actSelectTargetSlot($slot_index, $zone)
+    {
+        self::checkAction('actSelectTargetSlot');
+        $player_id = self::getActivePlayerId();
+        
+        $pending = $this-&gt;pullPending();
+        if (!$pending || $pending['actor_player_id'] != $player_id) {
+            throw new feException("Invalid action");
+        }
+        
+        // Validate target selection based on zone
+        if ($zone == TARGET_ZONE_HAND) {
+            // For hand targeting, slot_index is the target player ID
+            $target_player_id = $slot_index;
+            if (!$this-&gt;validateHandTarget($target_player_id, $pending['declared_identity'])) {
+                throw new feException("Invalid hand target");
+            }
+            
+            // Update pending action with specific target
+            $sql = "UPDATE pending_action SET target_player_id = $target_player_id, target_zone = 'hand' WHERE action_id = " . $pending['action_id'];
+            self::DbQuery($sql);
+            
+        } else if ($zone == TARGET_ZONE_HERD) {
+            // For herd targeting, slot_index is the card ID
+            $target_card_id = $slot_index;
+            if (!$this-&gt;validateHerdTarget($target_card_id, $pending['declared_identity'])) {
+                throw new feException("Invalid herd target");
+            }
+            
+            // Get card owner
+            $target_card = $this-&gt;cards-&gt;getCard($target_card_id);
+            $target_player_id = $target_card['location_arg'];
+            
+            // Update pending action
+            $sql = "UPDATE pending_action SET target_player_id = $target_player_id, target_zone = 'herd', selected_slot_index = $target_card_id WHERE action_id = " . $pending['action_id'];
+            self::DbQuery($sql);
+        } else {
+            throw new feException("Invalid target zone");
+        }
+        
+        // Notify target selection
+        self::notifyAllPlayers('targetSelected',
+            clienttranslate('${player_name} selects target'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getPlayerNameById($player_id),
+                'target_zone' =&gt; $zone,
+                'target_player_id' =&gt; $target_player_id
+            ]
+        );
+        
+        // Transition to intercept declare state
+        $this-&gt;gamestate-&gt;nextState('targetSelected');
+    }
+
+    function actDeclareIntercept($card_id, $zone)
+    {
+        self::checkAction('actDeclareIntercept');
+        $player_id = self::getActivePlayerId();
+        
+        // Validate Laser Pointer ownership
+        $card = $this-&gt;cards-&gt;getCard($card_id);
+        if (!$card || $card['location'] != CARD_LOCATION_HAND || $card['location_arg'] != $player_id) {
+            throw new feException("Card not in your hand");
+        }
+        
+        if ($card['type'] != CARD_TYPE_LASERPOINTER) {
+            throw new feException("Only Laser Pointer can intercept");
+        }
+        
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            throw new feException("No action to intercept");
+        }
+        
+        // Store intercept declaration
+        $sql = "UPDATE pending_action SET intercept_declared_by = $player_id, intercept_zone = '$zone' WHERE action_id = " . $pending['action_id'];
+        self::DbQuery($sql);
+        
+        // Move intercept card to limbo
+        $this-&gt;cards-&gt;moveCard($card_id, CARD_LOCATION_LIMBO, $player_id);
+        
+        // Notify intercept
+        self::notifyAllPlayers('interceptDeclared',
+            clienttranslate('${player_name} declares Laser Pointer intercept'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getPlayerNameById($player_id),
+                'intercept_zone' =&gt; $zone
+            ]
+        );
+        
+        $this-&gt;notifyHandCounts();
+        
+        // Transition to intercept challenge window
+        $this-&gt;gamestate-&gt;nextState('interceptDeclared');
+    }
+
+    function actPassIntercept()
+    {
+        self::checkAction('actPassIntercept');
+        $player_id = self::getActivePlayerId();
+        
+        // Notify pass
+        self::notifyAllPlayers('interceptPassed',
+            clienttranslate('${player_name} passes on intercept'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getPlayerNameById($player_id)
+            ]
+        );
+        
+        // Remove player from multiactive
+        $this-&gt;gamestate-&gt;setPlayerNonMultiactive($player_id, 'passIntercept');
+    }
+
+    function actChallengeIntercept()
+    {
+        self::checkAction('actChallengeIntercept');
+        $player_id = self::getActivePlayerId();
+        
+        $pending = $this-&gt;pullPending();
+        if (!$pending || !isset($pending['intercept_declared_by'])) {
+            throw new feException("No intercept to challenge");
+        }
+        
+        // Add player to intercept challengers list
+        $intercept_challengers = isset($pending['intercept_challengers']) ? json_decode($pending['intercept_challengers'], true) : [];
+        if (!in_array($player_id, $intercept_challengers)) {
+            $intercept_challengers[] = $player_id;
+            
+            // Update pending action
+            $sql = "UPDATE pending_action SET intercept_challengers = '" . addslashes(json_encode($intercept_challengers)) . "' WHERE action_id = " . $pending['action_id'];
+            self::DbQuery($sql);
+        }
+        
+        // Notify intercept challenge
+        self::notifyAllPlayers('interceptChallengeDeclared',
+            clienttranslate('${player_name} challenges the intercept'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getPlayerNameById($player_id)
+            ]
+        );
+        
+        // Remove player from multiactive
+        $this-&gt;gamestate-&gt;setPlayerNonMultiactive($player_id, 'challengeIntercept');
+    }
+
+    // Removed duplicate actSelectBlindFromChallenger($card_id) definition (conflicted with index-based API)
+
+    function actPassChallengeIntercept()
+    {
+        self::checkAction('actPassChallengeIntercept');
+        $player_id = self::getActivePlayerId();
+        
+        // Notify pass
+        self::notifyAllPlayers('interceptChallengePassed',
+            clienttranslate('${player_name} passes on challenging intercept'),
+            [
+                'player_id' =&gt; $player_id,
+                'player_name' =&gt; self::getPlayerNameById($player_id)
+            ]
+        );
+        
+        // Remove player from multiactive
+        $this-&gt;gamestate-&gt;setPlayerNonMultiactive($player_id, 'passChallengeIntercept');
+    }
+
+    function actSkipTargeting()
+    {
+        // TODO: Implement targeting logic - for now just transition
+        self::checkAction('actSkipTargeting');
+        
+        // Skip to next phase for non-targeting cards
+        $this-&gt;gamestate-&gt;nextState('noTargeting');
+    }
+
+//////////////////////////////////////////////////////////////////////////////
+//////////// Game state arguments
+////////////
+
+    /*
+        Here, you can create methods defined as "game state arguments" in "states.inc.php".
+        These methods function is to return some additional information that is specific to the current
+        game state.
+    */
+
+    /*
+    
+    Example for game state "MyGameState":
+    
+    function argMyGameState()
+    {
+        // Get some values from the current game situation in database...
+    
+        // return values:
+        return array(
+            'variable1' =&gt; $value1,
+            'variable2' =&gt; $value2,
+            ...
+        );
+    }    
+    */
+
+    // TODO: Stage 3-5 argument functions will go here
+    function argAwaitDeclaration()
+    {
+        // Return empty array if no active player (shouldn't happen)
+        $player_id = self::getActivePlayerId();
+        if (!$player_id) {
+            return [];
+        }
+        
+        // Get player's hand cards
+        $hand_cards = $this-&gt;cards-&gt;getCardsInLocation('hand', $player_id);
+        
+        return [
+            'hand_cards' =&gt; $hand_cards,
+            'card_types' =&gt; [
+                1 =&gt; clienttranslate('Kitten'),
+                2 =&gt; clienttranslate('Show Cat'),
+                3 =&gt; clienttranslate('Alley Cat'),
+                4 =&gt; clienttranslate('Catnip'),
+                5 =&gt; clienttranslate('Animal Control'),
+                6 =&gt; clienttranslate('Laser Pointer')
+            ],
+            'players' =&gt; self::loadPlayersBasicInfos()
+        ];
+    }
+
+    function argChallengeWindow()
+    {
+        // Build challenge window args from actual pending action data
+        $active_player = self::getActivePlayerId();
+        $players = self::loadPlayersBasicInfos();
+        $eligible = [];
+
+        foreach ($players as $player_id =&gt; $player_info) {
+            if ($player_id != $active_player) {
+                $eligible[] = intval($player_id);
+            }
+        }
+
+        $pending = $this-&gt;pullPending();
+        $declared_type = null;
+        if ($pending &amp;&amp; isset($pending['declared_identity'])) {
+            // Ensure numeric int for client mapping
+            $declared_type = intval($pending['declared_identity']);
+        }
+
+        return [
+            'eligible' =&gt; $eligible,
+            'eligible_challengers' =&gt; $eligible,
+            'can_challenge' =&gt; $eligible,
+            'actor_id' =&gt; $active_player,
+            // Provide both keys for client robustness
+            'declared_type' =&gt; $declared_type,
+            'declared_card' =&gt; $declared_type,
+            'actor_name' =&gt; self::getActivePlayerName()
+        ];
+    }
+
+    function argChallengerSelectBluffPenalty()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            return [];
+        }
+        
+        $actor_id = $pending['actor_player_id'];
+        $actor_cards = $this-&gt;getPlayerHandCards($actor_id);
+        
+        return [
+            'pending_action' =&gt; $pending,
+            'actor_id' =&gt; $actor_id,
+            'actor_name' =&gt; self::getPlayerNameById($actor_id),
+            'actor_hand_count' =&gt; count($actor_cards)
+        ];
+    }
+
+    function argAttackerSelectTruthfulPenalty()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            error_log("argAttackerSelectTruthfulPenalty: pending is null");
+            return [];
+        }
+
+        $actor_id = $pending['actor_player_id'];
+        // 'challengers' is already decoded in pullPending(); be defensive in case of older rows
+        $challengers = is_array($pending['challengers'])
+            ? $pending['challengers']
+            : (empty($pending['challengers']) ? [] : json_decode($pending['challengers'], true));
+        $challenger_id = !empty($challengers) ? intval($challengers[0]) : null;
+
+        // Build challengers envelope expected by client (with hand counts); avoid name lookups to prevent bad ids
+        $challengers_envelope = [];
+        foreach ($challengers as $cid) {
+            $cid = intval($cid);
+            if ($cid &gt; 0) {
+                $challengers_envelope[] = [
+                    'player_id' =&gt; $cid,
+                    'hand_count' =&gt; $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $cid)
+                ];
+            }
+        }
+        
+        // Defensive logging to aid Studio debugging
+        error_log("argAttackerSelectTruthfulPenalty: actor_id=" . $actor_id);
+        error_log("argAttackerSelectTruthfulPenalty: challengers=" . json_encode($challengers));
+        error_log("argAttackerSelectTruthfulPenalty: challenger_id=" . json_encode($challenger_id));
+
+        return [
+            'pending_action' =&gt; $pending,
+            'actor_id' =&gt; $actor_id,
+            'actor_name' =&gt; self::getPlayerNameById($actor_id),
+            'challenger_id' =&gt; $challenger_id,
+            'challengers' =&gt; $challengers_envelope
+        ];
+    }
+
+    
+
+    function argSelectTarget()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            return [];
+        }
+        
+        $declared_type = $pending['declared_identity'];
+        $target_zone = $this-&gt;getTargetZone($declared_type);
+        $valid_targets = [];
+        
+        if ($target_zone == TARGET_ZONE_HAND) {
+            // Get players with cards in hand (excluding actor)
+            $players = self::loadPlayersBasicInfos();
+            foreach ($players as $player_id =&gt; $player_info) {
+                if ($player_id != $pending['actor_player_id'] &amp;&amp; $this-&gt;hasCardsInHand($player_id)) {
+                    $valid_targets[] = [
+                        'player_id' =&gt; $player_id,
+                        'player_name' =&gt; $player_info['player_name'],
+                        'hand_count' =&gt; $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $player_id)
+                    ];
+                }
+            }
+        } else if ($target_zone == TARGET_ZONE_HERD) {
+            // Get face-down herd cards from all players
+            $players = self::loadPlayersBasicInfos();
+            foreach ($players as $player_id =&gt; $player_info) {
+                if ($player_id != $pending['actor_player_id']) {
+                    $herd_cards = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HERD_DOWN, $player_id);
+                    foreach ($herd_cards as $card) {
+                        $valid_targets[] = [
+                            'card_id' =&gt; $card['id'],
+                            'player_id' =&gt; $player_id,
+                            'player_name' =&gt; $player_info['player_name'],
+                            'declared_identity' =&gt; $card['card_declared_identity']
+                        ];
+                    }
+                }
+            }
+        }
+        
+        return [
+            'pending_action' =&gt; $pending,
+            'target_zone' =&gt; $target_zone,
+            'valid_targets' =&gt; $valid_targets,
+            'declared_card' =&gt; $this-&gt;getCardName($declared_type)
+        ];
+    }
+
+    function argInterceptDeclare()
+    {
+        $pending = $this-&gt;pullPending();
+        $player_id = self::getActivePlayerId();
+        
+        // Check if player has Laser Pointer
+        $hand_cards = $this-&gt;getPlayerHandCards($player_id);
+        $has_laser_pointer = false;
+        foreach ($hand_cards as $card) {
+            if ($card['type'] == CARD_TYPE_LASERPOINTER) {
+                $has_laser_pointer = true;
+                break;
+            }
+        }
+        
+        return [
+            'pending_action' =&gt; $pending,
+            'has_laser_pointer' =&gt; $has_laser_pointer,
+            'target_zone' =&gt; isset($pending['target_zone']) ? $pending['target_zone'] : null,
+            'target_player_name' =&gt; isset($pending['target_player_id']) ? self::getPlayerNameById($pending['target_player_id']) : ''
+        ];
+    }
+
+    function argInterceptChallengeWindow()
+    {
+        $pending = $this-&gt;pullPending();
+        
+        // Get players who can challenge intercept (excluding interceptor and original actor)
+        $participants = [];
+        $players = self::loadPlayersBasicInfos();
+        
+        foreach ($players as $player_id =&gt; $player_info) {
+            if ($player_id != $pending['intercept_declared_by'] &amp;&amp; 
+                $player_id != $pending['actor_player_id'] &amp;&amp; 
+                $this-&gt;hasCardsInHand($player_id)) {
+                $participants[] = $player_id;
+            }
+        }
+        
+        return [
+            'pending_action' =&gt; $pending,
+            'can_challenge_intercept' =&gt; $participants,
+            'interceptor_name' =&gt; self::getPlayerNameById($pending['intercept_declared_by'])
+        ];
+    }
+
+    function argInterceptChallengerSelectPenalty()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            return [];
+        }
+        
+        $interceptor_id = $pending['intercept_declared_by'];
+        $interceptor_cards = $this-&gt;getPlayerHandCards($interceptor_id);
+        
+        return [
+            'pending_action' =&gt; $pending,
+            'interceptor_id' =&gt; $interceptor_id,
+            'interceptor_name' =&gt; self::getPlayerNameById($interceptor_id),
+            'interceptor_hand_count' =&gt; count($interceptor_cards)
+        ];
+    }
+
+//////////////////////////////////////////////////////////////////////////////
+//////////// Game state actions
+////////////
+
+    /*
+        Here, you can create methods defined as "game state actions" in "states.inc.php".
+        The action method of state X is called everytime the current game state is set to X.
+    */
+    
+    /*
+    
+    Example for game state "MyGameState":
+
+    function stMyGameState()
+    {
+        // Do some stuff ...
+        
+        // (very often) go to another gamestate
+        $this-&gt;gamestate-&gt;nextState( 'myTransition' );
+    }    
+    */
+
+    // State action methods - called automatically when entering certain game states
+    
+    function stEnterChallengeWindow()
+    {
+        // Set up multiple active players for challenge window
+        // All players except the actor can challenge
+        $actor_id = $this-&gt;getActivePlayerId();
+        $all_players = $this-&gt;loadPlayersBasicInfos();
+        
+        $challengeable_players = [];
+        foreach ($all_players as $player_id =&gt; $player) {
+            if ($player_id != $actor_id) {
+                $challengeable_players[] = $player_id;
+            }
+        }
+        
+        // Activate all non-actor players for potential challenges
+        // When all pass, transition to 'unchallenged'
+        $this-&gt;gamestate-&gt;setPlayersMultiactive($challengeable_players, 'unchallenged', true);
+        
+        // Notify players about the challenge window
+        $pending = $this-&gt;pullPending();
+        if ($pending) {
+            $declared_type = $pending['declared_identity'];
+            $this-&gt;notifyAllPlayers('challengeWindow', 
+                clienttranslate('${player_name} declared ${card_name}. Players may challenge this declaration.'), 
+                [
+                    'player_id' =&gt; $actor_id,
+                    'player_name' =&gt; $all_players[$actor_id]['player_name'],
+                    'declared_type' =&gt; $declared_type,
+                    'card_name' =&gt; $this-&gt;getCardTypeName($declared_type)
+                ]
+            );
+        }
+    }
+    
+    function stResolveChallenge()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            throw new feException("No pending action to resolve challenge");
+        }
+        
+        // Get card details
+        $card = $this-&gt;cards-&gt;getCard($pending['played_card_id']);
+        $declared_type = $pending['declared_identity'];
+        $actual_type = $card['type'];
+        $actor_id = $pending['actor_player_id'];
+        $challengers = isset($pending['challengers']) ? $pending['challengers'] : [];
+        $this-&gt;debugLog('RESOLVE_CHALLENGE', [
+            'actor_id' =&gt; intval($actor_id),
+            'played_card_id' =&gt; intval($pending['played_card_id']),
+            'declared_type' =&gt; intval($declared_type),
+            'actual_type' =&gt; intval($actual_type),
+            'challengers' =&gt; $challengers
+        ]);
+        
+        if (empty($challengers)) {
+            // No challenges: move card from limbo to herd (face-down), then continue
+            if ($card &amp;&amp; $card['location'] === CARD_LOCATION_LIMBO) {
+                $this-&gt;cards-&gt;moveCard($card['id'], CARD_LOCATION_HERD_DOWN, $actor_id);
+                self::notifyAllPlayers('herdUpdate',
+                    clienttranslate('Card added to herd'),
+                    [
+                        'player_id' =&gt; $actor_id,
+                        'player_name' =&gt; $this-&gt;getPlayerName($actor_id),
+                        'card' =&gt; ['id' =&gt; $card['id'], 'type' =&gt; $card['type'], 'type_arg' =&gt; $card['type_arg']],
+                        'visible' =&gt; false
+                    ]
+                );
+            }
+
+            // No challenges: route depending on targeting/selection
+            if ($this-&gt;cardRequiresTargeting($declared_type)) {
+                if (!empty($pending['target_player_id']) || !empty($pending['selected_slot_index'])) {
+                    $this-&gt;gamestate-&gt;nextState('goToIntercept');
+                } else {
+                    $this-&gt;gamestate-&gt;nextState('goToTarget');
+                }
+            } else {
+                $this-&gt;gamestate-&gt;nextState('goToResolve');
+            }
+            return;
+        }
+        
+        // Check if declaration was truthful
+        $was_bluffing = ($declared_type != $actual_type);
+        
+        if ($was_bluffing) {
+            // Player was bluffing - challenger wins
+            $this-&gt;notifyAllPlayers('challengeResult', 
+                clienttranslate('Challenge successful! ${player_name} was bluffing about ${declared_card}.'), 
+                [
+                    'player_name' =&gt; $this-&gt;getPlayerName($actor_id),
+                    // Legacy/text fields
+                    'declared_card' =&gt; $this-&gt;getCardTypeName($declared_type),
+                    'actual_card' =&gt; $this-&gt;getCardTypeName($actual_type),
+                    'bluffing' =&gt; true,
+                    // Structured fields expected by client
+                    'was_bluffing' =&gt; true,
+                    'declared_type' =&gt; intval($declared_type),
+                    'actual_card_type' =&gt; intval($actual_type)
+                ]
+            );
+            
+            // Move played card from limbo to discard since bluff was caught
+            if ($card &amp;&amp; $card['location'] === CARD_LOCATION_LIMBO) {
+                $this-&gt;cards-&gt;moveCard($card['id'], CARD_LOCATION_DISCARD, $actor_id);
+                self::notifyAllPlayers('discardUpdate', '', [
+                    'player_id' =&gt; $actor_id,
+                    'card' =&gt; ['id' =&gt; $card['id'], 'type' =&gt; $card['type'], 'type_arg' =&gt; $card['type_arg']]
+                ]);
+            }
+
+            // Choose first challenger to apply penalty
+            $challenger_id = $challengers[0];
+            $this-&gt;gamestate-&gt;changeActivePlayer($challenger_id);
+            $this-&gt;gamestate-&gt;nextState('bluffCaught');
+        } else {
+            // Player was truthful - challengers pay penalty
+            $this-&gt;notifyAllPlayers('challengeResult', 
+                clienttranslate('Challenge failed! ${player_name} was truthful about ${declared_card}.'), 
+                [
+                    'player_name' =&gt; $this-&gt;getPlayerName($actor_id),
+                    // Legacy/text fields
+                    'declared_card' =&gt; $this-&gt;getCardTypeName($declared_type),
+                    'bluffing' =&gt; false,
+                    // Structured fields expected by client
+                    'was_bluffing' =&gt; false,
+                    'declared_type' =&gt; intval($declared_type),
+                    'actual_card_type' =&gt; intval($actual_type)
+                ]
+            );
+            
+            // Move played card from limbo to herd (face-down)
+            if ($card &amp;&amp; $card['location'] === CARD_LOCATION_LIMBO) {
+                $this-&gt;cards-&gt;moveCard($card['id'], CARD_LOCATION_HERD_DOWN, $actor_id);
+                self::notifyAllPlayers('herdUpdate', '', [
+                    'player_id' =&gt; $actor_id,
+                    'player_name' =&gt; $this-&gt;getPlayerName($actor_id),
+                    'card' =&gt; ['id' =&gt; $card['id'], 'type' =&gt; $card['type'], 'type_arg' =&gt; $card['type_arg']],
+                    'visible' =&gt; false
+                ]);
+            }
+
+            // Actor can choose to penalize one challenger
+            $this-&gt;gamestate-&gt;changeActivePlayer($actor_id);
+            $this-&gt;gamestate-&gt;nextState('challengeFailed');
+        }
+    }
+    
+    function stEnterSelectTarget()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            throw new feException("No pending action for target selection");
+        }
+        
+        $declared_type = $pending['declared_identity'];
+        $actor_id = $pending['actor_player_id'];
+        
+        // If card does not require targeting, or target is already selected, bypass UI
+        if (!$this-&gt;cardRequiresTargeting($declared_type)) {
+            $this-&gt;gamestate-&gt;nextState('noTargeting');
+            return;
+        }
+        if (!empty($pending['target_player_id']) || !empty($pending['selected_slot_index'])) {
+            $this-&gt;gamestate-&gt;nextState('targetSelected');
+            return;
+        }
+        
+        // Notify that target selection is needed
+        $this-&gt;notifyAllPlayers('targetSelectionRequired', 
+            clienttranslate('${player_name} must select a target for ${card_name}.'), 
+            [
+                'player_name' =&gt; $this-&gt;getPlayerName($actor_id),
+                'card_name' =&gt; $this-&gt;getCardTypeName($declared_type)
+            ]
+        );
+    }
+    
+    function stResolveInterceptChallenge()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            throw new feException("No pending action to resolve intercept challenge");
+        }
+        
+        $intercept_challengers = isset($pending['intercept_challengers']) ? $pending['intercept_challengers'] : [];
+        
+        if (empty($intercept_challengers)) {
+            // No challenges to intercept, proceed
+            $this-&gt;gamestate-&gt;nextState('interceptGoToResolve');
+            return;
+        }
+        
+        $intercept_player_id = $pending['intercept_player_id'];
+        $intercept_card_id = $pending['intercept_card_id'];
+        
+        // Get the intercept card to check if it's actually a Laser Pointer
+        $intercept_card = $this-&gt;cards-&gt;getCard($intercept_card_id);
+        $is_laser_pointer = ($intercept_card['type'] == CARD_TYPE_LASERPOINTER);
+        
+        if (!$is_laser_pointer) {
+            // Intercepter was bluffing
+            $this-&gt;notifyAllPlayers('interceptChallengeResult', 
+                clienttranslate('Intercept challenge successful! ${player_name} was bluffing about Laser Pointer.'), 
+                [
+                    'player_name' =&gt; $this-&gt;getPlayerName($intercept_player_id),
+                    'bluffing' =&gt; true
+                ]
+            );
+            
+            // Choose first challenger to apply penalty
+            $challenger_id = $intercept_challengers[0];
+            $this-&gt;gamestate-&gt;changeActivePlayer($challenger_id);
+            $this-&gt;gamestate-&gt;nextState('interceptBluffCaught');
+        } else {
+            // Intercepter was truthful
+            $this-&gt;notifyAllPlayers('interceptChallengeResult', 
+                clienttranslate('Intercept challenge failed! ${player_name} really had Laser Pointer.'), 
+                [
+                    'player_name' =&gt; $this-&gt;getPlayerName($intercept_player_id),
+                    'bluffing' =&gt; false
+                ]
+            );
+            
+            // Effect is cancelled, proceed to resolution
+            $this-&gt;gamestate-&gt;nextState('interceptChallengeFailed');
+        }
+    }
+    
+
+    function stRevealAndResolve()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            throw new feException("No pending action to resolve");
+        }
+        
+        // Get the actual card and declared types
+        $card = $this-&gt;cards-&gt;getCard($pending['played_card_id']);
+        $declared_type = $pending['declared_identity'];
+        $actual_type = $card['type'];
+        $actor_id = $pending['actor_player_id'];
+        
+        // Check if effect was intercepted by Laser Pointer
+        $effect_cancelled = false;
+        if (isset($pending['intercept_declared_by']) &amp;&amp; $pending['intercept_declared_by'] &gt; 0) {
+            // Find laser pointer in limbo from interceptor
+            $intercept_cards = $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_LIMBO, $pending['intercept_declared_by']);
+            if (!empty($intercept_cards)) {
+                $laser_card = array_values($intercept_cards)[0];
+                if ($laser_card['type'] == CARD_TYPE_LASERPOINTER) {
+                    // Successful intercept - cancel effect and discard laser pointer
+                    $effect_cancelled = true;
+                    $this-&gt;cards-&gt;moveCard($laser_card['id'], CARD_LOCATION_DISCARD, $pending['intercept_declared_by']);
+                    
+                    self::notifyAllPlayers('effectIntercepted',
+                        clienttranslate('${interceptor_name} successfully intercepts with Laser Pointer! Effect cancelled.'),
+                        [
+                            'interceptor_id' =&gt; $pending['intercept_declared_by'],
+                            'interceptor_name' =&gt; self::getPlayerNameById($pending['intercept_declared_by']),
+                            'actor_id' =&gt; $actor_id,
+                            'actor_name' =&gt; self::getPlayerNameById($actor_id)
+                        ]
+                    );
+                    
+                    $this-&gt;notifyHandCounts();
+                    $this-&gt;notifyDiscardUpdate($pending['intercept_declared_by']);
+                }
+            }
+        }
+        
+        // Apply card effects (if not intercepted)
+        if (!$effect_cancelled &amp;&amp; $this-&gt;isTargetedType($declared_type)) {
+            $target_player_id = $pending['target_player_id'];
+            $target_zone = $pending['target_zone'];
+            
+            // Apply specific card effects based on declared type
+            switch ($declared_type) {
+                case CARD_TYPE_ALLEYCAT:
+                    if ($target_zone == TARGET_ZONE_HAND) {
+                        $this-&gt;applyAlleyCatEffect($target_player_id, null);
+                    }
+                    break;
+                    
+                case CARD_TYPE_CATNIP:
+                    if ($target_zone == TARGET_ZONE_HAND) {
+                        $this-&gt;applyCatnipEffect($target_player_id, null, $actor_id);
+                    }
+                    break;
+                    
+                case CARD_TYPE_ANIMALCONTROL:
+                    if ($target_zone == TARGET_ZONE_HERD &amp;&amp; isset($pending['selected_slot_index'])) {
+                        $this-&gt;applyAnimalControlEffect($pending['selected_slot_index']);
+                    }
+                    break;
+            }
+        }
+        
+        $this-&gt;gamestate-&gt;nextState('effectResolved');
+    }
+
+    function stAddPlayedCardToHerd()
+    {
+        $pending = $this-&gt;pullPending();
+        if (!$pending) {
+            throw new feException("No pending action");
+        }
+        
+        // Move card from limbo to herd with declared identity
+        $card = $this-&gt;cards-&gt;getCard($pending['played_card_id']);
+        $this-&gt;addToHerdFaceDownAs($card['id'], $pending['actor_player_id'], $pending['declared_identity']);
+        
+        // Notify herd update
+        // Keep log simple to avoid substitution issues during development
+        self::notifyAllPlayers('cardAddedToHerd',
+            clienttranslate('Card added to herd'),
+            [
+                'player_id' =&gt; $pending['actor_player_id'],
+                'player_name' =&gt; self::getPlayerNameById($pending['actor_player_id'])
+            ]
+        );
+        
+        $this-&gt;notifyHerdUpdate($pending['actor_player_id']);
+        
+        // Clear pending action
+        $this-&gt;clearPending();
+        
+        $this-&gt;gamestate-&gt;nextState('cardAdded');
+    }
+
+    function stEndTurn()
+    {
+        $current_player_id = self::getActivePlayerId();
+        
+        // Notify turn ended
+        self::notifyAllPlayers('turnEnded',
+            clienttranslate('${player_name}\'s turn has ended'),
+            [
+                'player_id' =&gt; $current_player_id,
+                'player_name' =&gt; self::getPlayerNameById($current_player_id)
+            ]
+        );
+        
+        // Update hand counts for all players
+        $this-&gt;notifyHandCounts();
+        
+        // Check if game should end or continue to next player
+        if ($this-&gt;checkGameEndCondition()) {
+            // Calculate and store final scores
+            $this-&gt;stGameEnd();
+            $this-&gt;gamestate-&gt;nextState('gameEnd');
+        } else {
+            $this-&gt;activeNextPlayer();
+            $this-&gt;gamestate-&gt;nextState('nextPlayer');
+        }
+    }
+    
+    function stGameEnd()
+    {
+        $players = self::loadPlayersBasicInfos();
+        $final_scores = [];
+        $detailed_scores = [];
+        
+        foreach ($players as $player_id =&gt; $player_info) {
+            $score = $this-&gt;calculatePlayerScore($player_id);
+            $final_scores[$player_id] = $score;
+            
+            // Get detailed scoring breakdown
+            $herd_cards = array_merge(
+                $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HERD_DOWN, $player_id),
+                $this-&gt;cards-&gt;getCardsInLocation(CARD_LOCATION_HERD_UP, $player_id)
+            );
+            $cards_in_hand = $this-&gt;cards-&gt;countCardsInLocation(CARD_LOCATION_HAND, $player_id);
+            $hand_bonus = ceil($cards_in_hand / 2);
+            
+            $detailed_scores[$player_id] = [
+                'total_score' =&gt; $score,
+                'herd_cards_count' =&gt; count($herd_cards),
+                'hand_cards_count' =&gt; $cards_in_hand,
+                'hand_bonus' =&gt; $hand_bonus,
+                'player_name' =&gt; $player_info['player_name']
+            ];
+            
+            // Store score in player table for BGA
+            $sql = "UPDATE player SET player_score = $score WHERE player_id = $player_id";
+            self::DbQuery($sql);
+        }
+        
+        // Send game end notification with final scores
+        self::notifyAllPlayers('gameEnded',
+            clienttranslate('Game has ended! Final scores calculated'),
+            [
+                'scores' =&gt; $final_scores,
+                'detailed_scores' =&gt; $detailed_scores,
+                'winner_id' =&gt; array_keys($final_scores, max($final_scores))[0]
+            ]
+        );
+    }
+
+//////////////////////////////////////////////////////////////////////////////
+//////////// Zombie
+////////////
+
+    /*
+        zombieTurn:
+        
+        This method is called each time it is the turn of a player who has quit the game (= "zombie" player).
+        You can do whatever you want in order to make sure the turn of this player ends appropriately
+        (ex: pass).
+        
+        Important: your zombie code will be called when the player leaves the game. This action is triggered
+        from the main site and propagated to the gameserver from a server, not from a browser.
+        As a consequence, there is no current player associated to this action. In your zombieTurn function,
+        you must _never_ use getCurrentPlayerId() or getCurrentPlayerName(), otherwise it will fail with a "Not logged" error message. 
+    */
+
+    function zombieTurn($state, $active_player)
+    {
+        $statename = $state['name'];
+        
+        if ($state['type'] === "activeplayer") {
+            switch ($statename) {
+                case "awaitDeclaration":
+                    // TODO: Auto-declare a random valid card
+                    throw new feException("Zombie handling for awaitDeclaration not implemented yet - Stage 3");
+                    break;
+                    
+                case "challengerSelectBluffPenalty":
+                    // TODO: Auto-select a random card from bluffer's hand
+                    throw new feException("Zombie handling for challengerSelectBluffPenalty not implemented yet - Stage 3");
+                    break;
+                    
+                case "attackerSelectTruthfulPenalty":
+                    $pending = $this-&gt;pullPending();
+                    $actor_id = $pending['actor_player_id'];
+                    $challenger_id = json_decode($pending['challengers'], true)[0]; // Assuming single challenger for now
+
+                    self::setArgs(
+                        array(
+                            'actor_name' =&gt; self::getPlayerNameById($actor_id),
+                            'challenger_name' =&gt; self::getPlayerNameById($challenger_id)
+                        )
+                    );
+                    // The state description in states.inc.php will now use these names.
+
+                    // The game will now wait for actSelectBlindFromChallenger action from the actor.
+                    break;
+                    
+                case "selectTarget":
+                    // TODO: Auto-select a random valid target
+                    throw new feException("Zombie handling for selectTarget not implemented yet - Stage 4");
+                    break;
+                    
+                case "interceptDeclare":
+                    // TODO: Auto-pass intercept
+                    throw new feException("Zombie handling for interceptDeclare not implemented yet - Stage 4");
+                    break;
+                    
+                case "interceptChallengerSelectPenalty":
+                    // TODO: Auto-select penalty card
+                    throw new feException("Zombie handling for interceptChallengerSelectPenalty not implemented yet - Stage 4");
+                    break;
+                    
+                default:
+                    $this-&gt;gamestate-&gt;nextState("zombiePass");
+                    break;
+            }
+
+            return;
+        }
+
+        if ($state['type'] === "multipleactiveplayer") {
+            // Make sure player is in a non-blocking status for role turn
+            $this-&gt;gamestate-&gt;setPlayerNonMultiactive($active_player, '');
+            
+            return;
+        }
+
+        throw new feException("Zombie mode not supported at this game state: " . $statename);
+    }
+    
+///////////////////////////////////////////////////////////////////////////////////:
+////////// DB upgrade
+//////////
+
+    /*
+        upgradeTableDb:
+        
+        You don't have to care about this until your game has been published on BGA.
+        Once your game is on BGA, this method is called everytime the system detects a game running with your old
+        Database scheme.
+        In this case, if you change your Database scheme, you just have to apply the needed changes in order to
+        update the game database and allow the game to continue to run with your new version.
+    
+    */
+    
+    function upgradeTableDb($from_version)
+    {
+        // $from_version is the current version of this game database, in numerical form.
+        // For example, if the game was running with a release of your game named "140430-1345",
+        // $from_version is equal to 1404301345
+        
+        // Example:
+//        if( $from_version &lt;= 1404301345 )
+//        {
+//            // ! important ! Use DBPREFIX_&lt;table_name&gt; for all tables
+//
+//            $sql = "ALTER TABLE DBPREFIX_xxxxxxx ....";
+//            self::applyDbUpgradeToAllDB( $sql );
+//        }
+//        if( $from_version &lt;= 1405061421 )
+//        {
+//            // ! important ! Use DBPREFIX_&lt;table_name&gt; for all tables
+//
+//            $sql = "CREATE TABLE DBPREFIX_xxxxxxx ....";
+//            self::applyDbUpgradeToAllDB( $sql );
+//        }
+//        // Please add your future database scheme changes here
+//
+//
+    }    
+}
+</file><file path="src/herdingcats.js">/**
+ *------
+ * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
+ * HerdingCats implementation : © &lt;Your name here&gt; &lt;Your email address here&gt;
+ *
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ *
+ * herdingcats.js
+ *
+ * HerdingCats user interface script
+ * 
+ * Complete JavaScript game client for Herding Cats bluffing card game
+ *
+ */
+
+define([
+    "dojo","dojo/_base/declare",
+    "ebg/core/gamegui",
+    "ebg/counter",
+    "ebg/stock"
+],
+function (dojo, declare) {
+    return declare("bgagame.herdingcats", ebg.core.gamegui, {
+        constructor: function(){
+            console.log('HerdingCats constructor');
+              
+            // Card Type Constants
+            this.CARD_TYPE_KITTEN = 1;
+            this.CARD_TYPE_SHOWCAT = 2;  
+            this.CARD_TYPE_ALLEYCAT = 3;
+            this.CARD_TYPE_CATNIP = 4;
+            this.CARD_TYPE_ANIMALCONTROL = 5;
+            this.CARD_TYPE_LASERPOINTER = 6;
+
+            // Stock components
+            this.playerHand = null;
+            this.playerHerds = {};
+            this.playerDiscards = {};
+            
+            // Game state tracking
+            this.selectedCard = null;
+            this.currentDeclaration = null;
+            this.targetSelectionActive = false;
+            
+            // Card type names for UI
+            this.cardTypeNames = {  
+                1: _('Kitten'),
+                2: _('Show Cat'),
+                3: _('Alley Cat'),
+                4: _('Catnip'),
+                5: _('Animal Control'),
+                6: _('Laser Pointer')
+            };
+        },
+
+        // Build action URL dynamically based on current game slug
+        _actionUrl: function(action) {
+            return "/" + this.game_name + "/" + this.game_name + "/" + action + ".html";
+        },
+
+        // Lightweight client-&gt;server log for Studio debugging
+        _log: function(tag) {
+            try {
+                this.ajaxcall(this._actionUrl("actClientLog"), { level: 'info', msg: String(tag).replace(/[^a-zA-Z0-9_]/g,'_') }, this, function(){});
+            } catch(e) {}
+        },
+
+        // Normalize BGA onEnteringState args envelope to the inner args object
+        _stateArgs: function(envelope) {
+            if (envelope &amp;&amp; typeof envelope === 'object' &amp;&amp; 'args' in envelope) {
+                return envelope.args || {};
+            }
+            return envelope || {};
+        },
+        
+        /*
+            setup:
+            
+            This method must set up the game user interface according to current game situation specified
+            in parameters.
+            
+            The method is called each time the game interface is displayed to a player, ie:
+            _ when the game starts
+            _ when a player refreshes the game page (F5)
+            
+            "gamedatas" argument contains all datas retrieved by your "getAllDatas" PHP method.
+        */
+        
+        setup: function( gamedatas )
+        {
+            console.log( "Starting game setup", gamedatas );
+
+            // Store game data
+            this.gamedatas = gamedatas;
+
+            // Setup player hand
+            this.setupPlayerHand(gamedatas);
+            
+            // Setup player boards
+            this.setupPlayerBoards(gamedatas);
+            
+            // Initialize counters
+            this.setupCounters(gamedatas);
+            
+            // Load current state
+            this.loadGameState(gamedatas);
+            
+            // Setup event handlers
+            this.setupEventHandlers();
+            
+            // Setup game notifications to handle (see "setupNotifications" method below)
+            this.setupNotifications();
+
+            console.log( "Ending game setup" );
+        },
+
+        setupPlayerHand: function(gamedatas) {
+            // Create stock component for current player hand
+            this.playerHand = new ebg.stock();
+            this.playerHand.create(this, $('hc_current_hand'), 72, 96);
+            this.playerHand.image_items_per_row = 1;
+            this.playerHand.centerItems = true;
+            
+            // Add all card types to stock using existing JPEG art
+            const typeToImg = {
+                1: 'img/herding_cats_art/kitten.jpeg',
+                2: 'img/herding_cats_art/showcat.jpeg',
+                3: 'img/herding_cats_art/alleycat.jpeg',
+                4: 'img/herding_cats_art/catnip.jpeg',
+                5: 'img/herding_cats_art/animalcontrol.jpeg',
+                6: 'img/herding_cats_art/laserpointer.jpeg'
+            };
+            for (let cardType = 1; cardType &lt;= 6; cardType++) {
+                this.playerHand.addItemType(cardType, cardType, g_gamethemeurl + typeToImg[cardType], 0);
+            }
+            
+            // Connect selection handler
+            dojo.connect(this.playerHand, 'onChangeSelection', this, 'onPlayerHandSelectionChanged');
+            
+            // Load current player's hand
+            if (gamedatas.hand) {
+            // gamedatas.hand may be an object keyed by string ids or an array; support both
+                const list = Array.isArray(gamedatas.hand) ? gamedatas.hand : Object.values(gamedatas.hand);
+                // Add all cards to stock
+                list.forEach(card =&gt; {
+                    const cid = parseInt(card.id ?? card.card_id);
+                    const ctype = parseInt(card.type ?? card.card_type);
+                    if (!isNaN(cid) &amp;&amp; !isNaN(ctype)) {
+                        this.playerHand.addToStockWithId(ctype, cid);
+                    }
+                });
+                // Reorder hand to match server-provided positions (location_arg) so both players see the same order
+                try {
+                    const weights = {};
+                    for (let i = 0; i &lt; list.length; i++) {
+                        const card = list[i];
+                        const cid = parseInt(card.id ?? card.card_id);
+                        const pos = parseInt(card.location_arg ?? (i + 1));
+                        if (!isNaN(cid) &amp;&amp; !isNaN(pos)) weights[cid] = pos;
+                    }
+                    if (this.playerHand.changeItemsWeight) {
+                        this.playerHand.changeItemsWeight(weights);
+                    }
+                } catch (e) { console.warn('hand weight order failed', e); }
+            }
+        },
+
+        setupPlayerBoards: function(gamedatas) {
+            // Initialize herd and discard stocks for each player
+            for (let playerId in gamedatas.players) {
+                // Create herd stocks (face-down and face-up)
+                this.playerHerds[playerId] = {
+                    faceDown: new ebg.stock(),
+                    faceUp: new ebg.stock()
+                };
+                
+                // Setup face-down herd
+                this.playerHerds[playerId].faceDown.create(this, $('hc_herd_face_down_' + playerId), 72, 96);
+                this.playerHerds[playerId].faceDown.image_items_per_row = 1;
+                this.playerHerds[playerId].faceDown.addItemType(0, 0, g_gamethemeurl + 'img/herding_cats_art/cardback.jpeg', 0);
+                
+                // Setup face-up herd
+                this.playerHerds[playerId].faceUp.create(this, $('hc_herd_face_up_' + playerId), 72, 96);
+                this.playerHerds[playerId].faceUp.image_items_per_row = 1;
+                const typeToImg = {
+                    1: 'img/herding_cats_art/kitten.jpeg',
+                    2: 'img/herding_cats_art/showcat.jpeg',
+                    3: 'img/herding_cats_art/alleycat.jpeg',
+                    4: 'img/herding_cats_art/catnip.jpeg',
+                    5: 'img/herding_cats_art/animalcontrol.jpeg',
+                    6: 'img/herding_cats_art/laserpointer.jpeg'
+                };
+                for (let cardType = 1; cardType &lt;= 6; cardType++) {
+                    this.playerHerds[playerId].faceUp.addItemType(cardType, cardType, g_gamethemeurl + typeToImg[cardType], 0);
+                }
+                
+                // Create discard stock
+                this.playerDiscards[playerId] = new ebg.stock();
+                this.playerDiscards[playerId].create(this, $('hc_discard_' + playerId), 72, 96);
+                this.playerDiscards[playerId].image_items_per_row = 1;
+                const typeToImg2 = {
+                    1: 'img/herding_cats_art/kitten.jpeg',
+                    2: 'img/herding_cats_art/showcat.jpeg',
+                    3: 'img/herding_cats_art/alleycat.jpeg',
+                    4: 'img/herding_cats_art/catnip.jpeg',
+                    5: 'img/herding_cats_art/animalcontrol.jpeg',
+                    6: 'img/herding_cats_art/laserpointer.jpeg'
+                };
+                for (let cardType = 1; cardType &lt;= 6; cardType++) {
+                    this.playerDiscards[playerId].addItemType(cardType, cardType, g_gamethemeurl + typeToImg2[cardType], 0);
+                }
+                
+                // Load existing cards
+                if (gamedatas.herds &amp;&amp; gamedatas.herds[playerId]) {
+                    // Load face-down herd
+                    if (gamedatas.herds[playerId].face_down) {
+                        gamedatas.herds[playerId].face_down.forEach(card =&gt; {
+                            this.playerHerds[playerId].faceDown.addToStockWithId(0, card.id);
+                        });
+                    }
+                    
+                    // Load face-up herd
+                    if (gamedatas.herds[playerId].face_up) {
+                        gamedatas.herds[playerId].face_up.forEach(card =&gt; {
+                            this.playerHerds[playerId].faceUp.addToStockWithId(card.type, card.id);
+                        });
+                    }
+                }
+                
+                // Load discard pile
+                if (gamedatas.discards &amp;&amp; gamedatas.discards[playerId]) {
+                    gamedatas.discards[playerId].forEach(card =&gt; {
+                        this.playerDiscards[playerId].addToStockWithId(card.type, card.id);
+                    });
+                }
+            }
+        },
+
+        setupCounters: function(gamedatas) {
+            // Setup hand count and score counters for each player
+            for (let playerId in gamedatas.players) {
+                // Update hand counts
+                if (gamedatas.handCounts &amp;&amp; gamedatas.handCounts[playerId] !== undefined) {
+                    $('hc_hand_count_' + playerId).innerHTML = gamedatas.handCounts[playerId];
+                }
+                
+                // Update scores
+                if (gamedatas.scores &amp;&amp; gamedatas.scores[playerId] !== undefined) {
+                    $('hc_score_' + playerId).innerHTML = gamedatas.scores[playerId];
+                }
+            }
+        },
+
+        loadGameState: function(gamedatas) {
+            // Update current action display based on game state
+            if (gamedatas.gamestate) {
+                const stateName = gamedatas.gamestate.name;
+                this.updateActionPrompts(stateName, gamedatas.gamestate.args);
+            }
+        },
+
+        setupEventHandlers: function() {
+            // Connect card type declaration buttons
+            dojo.query('.hc_card_type_btn').connect('onclick', this, 'onCardTypeDeclared');
+            
+            // Connect cancel buttons
+            dojo.connect($('hc_cancel_declare'), 'onclick', this, 'onCancelDeclaration');
+            dojo.connect($('hc_cancel_target'), 'onclick', this, 'onCancelTargeting');
+        },
+
+        ///////////////////////////////////////////////////
+        //// Game &amp; client states
+        
+        // onEnteringState: this method is called each time we are entering into a new game state.
+        //                  You can use this method to perform some user interface changes at this moment.
+        //
+        onEnteringState: function( stateName, args )
+        {
+            console.log( 'Entering state: '+stateName, args );
+            this._log('enter_'+stateName);
+            const a = this._stateArgs(args);
+            
+            switch( stateName )
+            {
+                case 'awaitDeclaration':
+                    this.onEnteringState_awaitDeclaration(a);
+                    break;
+                    
+                case 'challengeWindow':
+                    this.onEnteringState_challengeWindow(a);
+                    break;
+                    
+                case 'selectTarget':
+                    this.onEnteringState_selectTarget(a);
+                    break;
+                    
+                case 'interceptDeclare':
+                    this.onEnteringState_interceptDeclare(a);
+                    break;
+                    
+                case 'interceptChallengeWindow':
+                    this.onEnteringState_interceptChallengeWindow(a);
+                    break;
+                    
+                case 'challengerSelectBluffPenalty':
+                case 'attackerSelectTruthfulPenalty':
+                case 'interceptChallengerSelectPenalty':
+                    this.onEnteringState_selectPenalty(a);
+                    break;
+            }
+        },
+
+        onEnteringState_awaitDeclaration: function(args) {
+            if (this.isCurrentPlayerActive()) {
+                this.updateActionPrompts('awaitDeclaration', args);
+                // Enable hand card selection
+                this.playerHand.setSelectionMode(1);
+            }
+        },
+
+        onEnteringState_challengeWindow: function(args) {
+            // Show challenge options for eligible players
+            // Cache declared data so preview persists across re-renders
+            if (args) {
+                // Prefer numeric declared_type; fallback to declared_card
+                const dType = (args.declared_type !== undefined &amp;&amp; args.declared_type !== null)
+                    ? args.declared_type
+                    : args.declared_card;
+                if (dType !== undefined &amp;&amp; dType !== null) this.currentDeclaredType = dType;
+                // Accept either actor_name or acting_player_name
+                this.currentActorName = args.actor_name || args.acting_player_name || this.currentActorName;
+            }
+            this.updateActionPrompts('challengeWindow', args);
+            // Ensure preview is rendered immediately
+            const previewType = (args &amp;&amp; (args.declared_type !== undefined || args.declared_card !== undefined))
+                ? (args.declared_type !== undefined ? args.declared_type : args.declared_card)
+                : this.currentDeclaredType;
+            if (previewType !== undefined &amp;&amp; previewType !== null) this.renderDeclaredPreview(previewType);
+        },
+
+        onEnteringState_selectTarget: function(args) {
+            // Always update the yellow prompt for clarity
+            this.updateActionPrompts('selectTarget', args);
+
+            // Show selector for the acting player; be robust across engine quirks
+            const isActor = args &amp;&amp; (parseInt(args.acting_player_id) === parseInt(this.player_id));
+            if (this.isCurrentPlayerActive() || isActor) {
+                this._log('enter_selectTarget_show');
+                this.showTargetSelection(args);
+            } else {
+                this._log('enter_selectTarget_noactive');
+            }
+        },
+
+        onEnteringState_interceptDeclare: function(args) {
+            if (this.isCurrentPlayerActive()) {
+                this.updateActionPrompts('interceptDeclare', args);
+            }
+        },
+
+        onEnteringState_interceptChallengeWindow: function(args) {
+            if (this.isCurrentPlayerActive()) {
+                this.updateActionPrompts('interceptChallengeWindow', args);
+            }
+        },
+
+        onEnteringState_selectPenalty: function(args) {
+            if (this.isCurrentPlayerActive()) {
+                this.showPenaltySelection(args);
+            }
+        },
+
+        // onLeavingState: this method is called each time we are leaving a game state.
+        //                 You can use this method to perform some user interface changes at this moment.
+        //
+        onLeavingState: function( stateName )
+        {
+            console.log( 'Leaving state: '+stateName );
+            
+            switch( stateName )
+            {
+                case 'awaitDeclaration':
+                    // Disable hand selection
+                    this.playerHand.setSelectionMode(0);
+                    this.hideDeclarationDialog();
+                    break;
+                    
+                case 'selectTarget':
+                    this.hideTargetSelection();
+                    break;
+                    
+                case 'challengeWindow':
+                case 'interceptChallengeWindow':
+                    // Clear challenge UI
+                    dojo.query('#challenge_btn, #pass_challenge_btn').forEach(dojo.destroy);
+                    // Remove declared preview
+                    var prev = $('hc_declared_preview'); if (prev) dojo.destroy(prev);
+                    break;
+                case 'attackerSelectTruthfulPenalty':
+                case 'challengerSelectBluffPenalty':
+                    var ph = $('hc_penalty_hand'); if (ph) dojo.destroy(ph);
+                    break;
+            }               
+        }, 
+
+        // onUpdateActionButtons: in this method you can manage "action buttons" that are displayed in the
+        //                        action status bar (ie: the HTML links in the status bar).
+        //        
+        onUpdateActionButtons: function( stateName, args )
+        {
+            console.log( 'onUpdateActionButtons: '+stateName, args );
+                      
+            if( this.isCurrentPlayerActive() )
+            {            
+                switch( stateName )
+                {
+                    case 'awaitDeclaration':
+                        // No action buttons needed - use card selection
+                        break;
+                        
+                case 'challengeWindow':
+                        // Ensure buttons appear in MULTIPLE_ACTIVE state via action bar
+                        if (args &amp;&amp; args.eligible_challengers &amp;&amp; args.eligible_challengers.includes(parseInt(this.player_id))) {
+                            this.addActionButton('challenge_btn', _('Challenge'), 'onChallenge');
+                            this.addActionButton('pass_challenge_btn', _('Pass'), 'onPassChallenge', null, false, 'gray');
+                        }
+                        break;
+                        
+                    case 'interceptDeclare':
+                        this.addActionButton('intercept_btn', _('Intercept with Laser Pointer'), 'onDeclareIntercept');
+                        this.addActionButton('pass_intercept_btn', _('Allow Attack'), 'onPassIntercept', null, false, 'gray');
+                        break;
+                        
+                case 'interceptChallengeWindow':
+                    this.addActionButton('challenge_intercept_btn', _('Challenge Laser Pointer'), 'onChallengeIntercept');
+                    this.addActionButton('pass_intercept_challenge_btn', _('Pass'), 'onPassChallengeIntercept', null, false, 'gray');
+                    break;
+
+                case 'attackerSelectTruthfulPenalty':
+                    if (args &amp;&amp; args.challengers &amp;&amp; args.challengers.length &gt; 0) {
+                        const challenger = args.challengers[0];
+                        this._penaltyArgs = {
+                            target_player_id: challenger.player_id
+                        };
+                        this.renderPenaltyHand(challenger.hand_count || 0, (i)=&gt;this.onPickTruthPenalty(i));
+                    }
+                    break;
+
+                case 'challengerSelectBluffPenalty':
+                    if (args) {
+                        this._penaltyArgs = args;
+                        this.renderPenaltyHand(args.hand_count || 0, (i)=&gt;this.onPickBluffPenalty(i));
+                    }
+                    break;
+
+                case 'selectTarget':
+                    // Ensure the target UI appears even if onEnteringState timing is odd
+                    if (args &amp;&amp; args.valid_targets &amp;&amp; args.valid_targets.length) {
+                        const isActor = args &amp;&amp; (parseInt(args.acting_player_id) === parseInt(this.player_id));
+                        if (this.isCurrentPlayerActive() || isActor) {
+                            this._log('buttons_selectTarget_force_show');
+                            this.showTargetSelection(args);
+                        }
+                    }
+                    if (args &amp;&amp; args.canSkip) {
+                        this.addActionButton('skip_targeting_btn', _('Skip Targeting'), 'onSkipTargeting', null, false, 'gray');
+                    }
+                    break;
+                }
+            }
+        },        
+
+        ///////////////////////////////////////////////////
+        //// Utility methods
+        
+        updateActionPrompts: function(stateName, args) {
+            const promptsDiv = $('hc_action_prompts');
+            if (!promptsDiv) return;
+            
+            // Use a dedicated text span so we don't wipe the preview element
+            let textSpan = $('hc_prompt_text');
+            if (!textSpan) {
+                textSpan = dojo.create('span', { id: 'hc_prompt_text' }, promptsDiv);
+            }
+            
+            let promptText = '';
+            
+            switch(stateName) {
+                case 'awaitDeclaration':
+                    promptText = _('Select a card from your hand and declare its type');
+                    break;
+                case 'challengeWindow':
+                    // Yellow area should focus on the declared info only; system shows waiting text above.
+                    promptText = ''; // Let renderDeclaredPreview handle the display
+                    break;
+                case 'selectTarget':
+                    promptText = _('Select your target.');
+                    break;
+                case 'interceptDeclare':
+                    promptText = _('You are being targeted! Intercept with Laser Pointer?');
+                    break;
+                case 'interceptChallengeWindow':
+                    promptText = _('Player claims to have Laser Pointer. Challenge?');
+                    break;
+                case 'attackerSelectTruthfulPenalty':
+                    promptText = _('You may discard one card from opponent\'s hand');
+                    break;
+                case 'challengerSelectBluffPenalty':
+                    promptText = _('Select opponent card to discard');
+                    break;
+            }
+            
+            textSpan.innerHTML = promptText;
+
+            // For challenge window, show a small declared preview to all players, using fallback when needed
+            if (stateName === 'challengeWindow') {
+                let dTypePrev = null;
+                if (args) {
+                    if (args.declared_type !== undefined &amp;&amp; args.declared_type !== null) dTypePrev = args.declared_type;
+                    else if (args.declared_card !== undefined &amp;&amp; args.declared_card !== null) dTypePrev = args.declared_card;
+                }
+                if (dTypePrev === null || dTypePrev === undefined) dTypePrev = this.currentDeclaredType;
+                if (dTypePrev !== null &amp;&amp; dTypePrev !== undefined) this.renderDeclaredPreview(dTypePrev);
+            }
+        },
+
+        renderDeclaredPreview: function(declaredType) {
+            // Small preview under prompts: face-down card + declared type label
+            const promptsDiv = $('hc_action_prompts');
+            if (!promptsDiv) return;
+            const prevId = 'hc_declared_preview';
+            let prev = $(prevId);
+            if (!prev) {
+                prev = dojo.create('div', { id: prevId, style: 'margin-top:8px; display:flex; align-items:center; gap:8px;' }, promptsDiv);
+                const card = dojo.create('div', { className: 'hc_card hc_face_down', style: 'width:36px;height:48px;border-width:1px;background-image:url('+ (typeof g_gamethemeurl!=='undefined'? g_gamethemeurl : '') + 'img/herding_cats_art/cardback.jpeg);background-size:cover;background-position:center;' }, prev);
+                // background-image is set by CSS class hc_face_down
+                const label = (this.cardTypeNames &amp;&amp; this.cardTypeNames[declaredType]) ? this.cardTypeNames[declaredType] : declaredType;
+                dojo.create('span', { innerHTML: dojo.string.substitute(_('Declared as: ${type}'), { type: label }) }, prev);
+            } else {
+                const label = (this.cardTypeNames &amp;&amp; this.cardTypeNames[declaredType]) ? this.cardTypeNames[declaredType] : declaredType;
+                prev.querySelector('span').innerHTML = dojo.string.substitute(_('Declared as: ${type}'), { type: label });
+            }
+        },
+
+        
+        /**
+         * Render a small preview of the selected card inside the declaration overlay
+         * @param {{id:number, type:number}} selectedItem
+         */
+        renderDeclarationOverlayPreview: function(selectedItem) {
+            const container = $('hc_declare_preview');
+            if (!container) return;
+            container.innerHTML = '';
+            if (!selectedItem) return;
+            const cardEl = dojo.create('div', {
+                className: 'hc_card hc_declare_preview_card',
+                'data-card-type': selectedItem.type
+            }, container);
+            // Small label
+            dojo.create('div', { className: 'hc_declare_preview_label', innerHTML: _('You are about to play this card') }, container);
+        },
+showDeclarationDialog: function(cardId) {
+            this.selectedCard = cardId;
+            dojo.style('hc_declare_overlay', 'display', 'flex');
+            // Try to find the selected item in stock to render preview
+            const sel = this.playerHand.getSelectedItems();
+            if (sel &amp;&amp; sel.length &gt; 0) {
+                this.renderDeclarationOverlayPreview(sel[0]);
+            } else {
+                // Clear preview if nothing selected
+                const container = $('hc_declare_preview');
+                if (container) container.innerHTML = '';
+            }
+        },
+
+        hideDeclarationDialog: function() {
+            dojo.style('hc_declare_overlay', 'display', 'none');
+            this.selectedCard = null;
+        },
+
+        showTargetSelection: function(args) {
+            if (!args || !args.valid_targets) return;
+            this._log('showTargets_'+(args.valid_targets ? args.valid_targets.length : 0));
+
+            let overlay = $('hc_target_overlay');
+            let optionsDiv = $('hc_target_options');
+
+            // If overlay/template nodes are missing (safety), fallback to inline rendering
+            if (!overlay || !optionsDiv) {
+                this._log('fallback_inline');
+                const promptsDiv = $('hc_action_prompts');
+                if (!promptsDiv) return;
+                let inline = $('hc_inline_targets');
+                if (inline) dojo.destroy(inline);
+                inline = dojo.create('div', { id: 'hc_inline_targets', style: 'margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;' }, promptsDiv);
+                const zone = args.target_zone || '';
+                args.valid_targets.forEach(t =&gt; {
+                    const id = (t.id !== undefined) ? t.id : (t.player_id !== undefined ? t.player_id : t.card_id);
+                    const name = (t.name) || (t.player_name) || (_('Target'));
+                    const btn = dojo.create('button', { className: 'hc_target_btn', innerHTML: name }, inline);
+                    dojo.attr(btn, 'data-target-id', id);
+                    dojo.attr(btn, 'data-target-zone', (t.zone || zone || ''));
+                    dojo.connect(btn, 'onclick', this, () =&gt; this.onSelectTarget(id, (t.zone || zone || '')));
+                });
+                return;
+            }
+
+            // Clear previous options
+            optionsDiv.innerHTML = '';
+            this._log('overlay_ok');
+
+            const zone = args.target_zone || null;
+
+            // Normalize and add target buttons (server may send different shapes)
+            args.valid_targets.forEach(t =&gt; {
+                const id = (t.id !== undefined) ? t.id : (t.player_id !== undefined ? t.player_id : t.card_id);
+                const name = (t.name) || (t.player_name) || (_('Target'));
+                const btn = dojo.place(dojo.string.substitute(jstpl_target_button, {
+                    target_id: id,
+                    target_zone: (t.zone || zone || ''),
+                    target_name: name
+                }), optionsDiv);
+                dojo.connect(btn, 'onclick', this, () =&gt; {
+                    this.onSelectTarget(id, (t.zone || zone || ''));
+                });
+            });
+
+            dojo.style(overlay, 'display', 'flex');
+            this.targetSelectionActive = true;
+        },
+
+        hideTargetSelection: function() {
+            dojo.style('hc_target_overlay', 'display', 'none');
+            this.targetSelectionActive = false;
+        },
+
+        showPenaltySelection: function(args) {
+            // Show UI for blind card selection from opponent
+            if (args &amp;&amp; args.target_player_id) {
+                this.highlightValidTargets([{
+                    player_id: args.target_player_id,
+                    zone: 'hand',
+                    selectable: true
+                }]);
+            }
+        },
+
+        highlightValidTargets: function(targets) {
+            // Remove previous highlights
+            dojo.query('.hc_selectable').removeClass('hc_selectable');
+            
+            targets.forEach(target =&gt; {
+                if (target.zone === 'hand') {
+                    // Highlight player board for hand targeting
+                    dojo.addClass('hc_player_board_' + target.player_id, 'hc_selectable');
+                } else if (target.zone === 'herd') {
+                    // Highlight face-down herd cards
+                    const herdContainer = $('hc_herd_face_down_' + target.player_id);
+                    if (herdContainer) {
+                        dojo.query('.hc_card', herdContainer).addClass('hc_selectable');
+                    }
+                }
+            });
+        },
+
+        updateHandCounts: function(handCounts) {
+            for (let playerId in handCounts) {
+                const element = $('hc_hand_count_' + playerId);
+                if (element) {
+                    element.innerHTML = handCounts[playerId];
+                }
+            }
+        },
+
+        animateCardMovement: function(cardElement, fromContainer, toContainer, callback) {
+            // Simple animation - move card with CSS transition
+            const cardClone = cardElement.cloneNode(true);
+            
+            // Position clone at original location
+            const fromRect = fromContainer.getBoundingClientRect();
+            const toRect = toContainer.getBoundingClientRect();
+            
+            cardClone.style.position = 'fixed';
+            cardClone.style.left = fromRect.left + 'px';
+            cardClone.style.top = fromRect.top + 'px';
+            cardClone.style.zIndex = '1000';
+            
+            document.body.appendChild(cardClone);
+            
+            // Animate to destination
+            setTimeout(() =&gt; {
+                cardClone.style.transition = 'all 0.5s ease';
+                cardClone.style.left = toRect.left + 'px';
+                cardClone.style.top = toRect.top + 'px';
+                
+                setTimeout(() =&gt; {
+                    document.body.removeChild(cardClone);
+                    if (callback) callback();
+                }, 500);
+            }, 50);
+        },
+
+        ///////////////////////////////////////////////////
+        //// Player's action
+        
+        onPlayerHandSelectionChanged: function() {
+            const selection = this.playerHand.getSelectedItems();
+            if (selection.length &gt; 0) {
+                const cardId = selection[0].id;
+                // Show bluff/declaration dialog so player can choose any identity
+                if (this.gamedatas.gamestate &amp;&amp; this.gamedatas.gamestate.name === 'awaitDeclaration') {
+                    this.showDeclarationDialog(cardId);
+                }
+            }
+        },
+
+        onCardTypeDeclared: function(evt) {
+            const declaredType = parseInt(dojo.attr(evt.currentTarget, 'data-type'));
+            
+            // Always re-read the current stock selection at click time - do not rely on cached this.selectedCard
+            const sel = this.playerHand.getSelectedItems();
+            if (!sel || sel.length === 0) {
+                this.showMessage(_('Please select a card from your hand first'), 'error');
+                return;
+            }
+            const cardId = parseInt(sel[0].id);
+            
+            // Update overlay preview just before sending
+            this.renderDeclarationOverlayPreview(sel[0]);
+            this.hideDeclarationDialog();
+            
+            // Send declaration to server
+            this.ajaxcall(this._actionUrl("actDeclare"), { 
+                card_id: cardId,
+                declared_type: declaredType,
+                lock: true
+            }, this, function(result) {
+                // Success handled by notifications
+            }(this._actionUrl("actDeclare"), {
+                card_id: cardId,
+                declared_type: declaredType,
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            }, function(is_error) {
+                // Error handling
+                console.error('Declaration failed', is_error);
+            });
+        },
+
+        onCancelDeclaration: function() {
+            this.hideDeclarationDialog();
+            // Deselect card
+            this.playerHand.unselectAll();
+        },
+
+        onChallenge: function() {
+            // Get the actor_id from game state args if available
+            let actorId = null;
+            if (this.gamedatas.gamestate &amp;&amp; this.gamedatas.gamestate.args &amp;&amp; this.gamedatas.gamestate.args.actor_id) {
+                actorId = this.gamedatas.gamestate.args.actor_id;
+            }
+            
+            const params = { lock: true };
+            if (actorId) {
+                params.actor_id = actorId;
+            }
+            
+            this.ajaxcall(this._actionUrl("actChallenge"), params, this, function(result) {
+                // Success handled by notification
+            });
+        },
+
+        onPassChallenge: function() {
+            this.ajaxcall(this._actionUrl("actPassChallenge"), {
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            });
+        },
+
+        onPickTruthPenalty: function(index) {
+            const args = this._penaltyArgs || {};
+            const targetId = args.target_player_id;
+            this.ajaxcall(this._actionUrl("actSelectBlindFromChallenger"), {
+                player_id: targetId,
+                card_index: index,
+                lock: true
+            }, this, function(result) {});
+        },
+
+        onPickBluffPenalty: function(index) {
+            this.ajaxcall(this._actionUrl("actSelectBlindFromActor"), {
+                card_index: index,
+                lock: true
+            }, this, function(result) {});
+        },
+
+        renderPenaltyHand: function(count, onClick) {
+            const promptsDiv = $('hc_action_prompts');
+            if (!promptsDiv) return;
+            const id = 'hc_penalty_hand';
+            let host = $(id);
+            if (host) dojo.destroy(host);
+            host = dojo.create('div', { id, style: 'margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;' }, promptsDiv);
+            for (let i = 0; i &lt; count; i++) {
+                const c = dojo.create('div', { className: 'hc_card hc_face_down', style: 'width:48px;height:64px;border-width:1px;cursor:pointer;' }, host);
+                // Use 1-based slot numbers for clarity and to match server indexing
+                const slotNo = i + 1;
+                dojo.connect(c, 'onclick', this, ()=&gt; onClick(slotNo));
+                c.title = _('Pick slot ') + slotNo;
+            }
+        },
+
+        onSelectTarget: function(targetId, targetZone) {
+            this.hideTargetSelection();
+            
+            this.ajaxcall(this._actionUrl("actSelectTargetSlot"), {
+                slot_index: targetId,
+                zone: targetZone,
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            });
+        },
+
+        onSkipTargeting: function() {
+            this.ajaxcall(this._actionUrl("actSkipTargeting"), {
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            });
+        },
+
+        onCancelTargeting: function() {
+            this.hideTargetSelection();
+        },
+
+        onDeclareIntercept: function() {
+            this.ajaxcall(this._actionUrl("actDeclareIntercept"), {
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            });
+        },
+
+        onPassIntercept: function() {
+            this.ajaxcall(this._actionUrl("actPassIntercept"), {
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            });
+        },
+
+        onChallengeIntercept: function() {
+            this.ajaxcall(this._actionUrl("actChallengeIntercept"), {
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            });
+        },
+
+        onPassChallengeIntercept: function() {
+            this.ajaxcall(this._actionUrl("actPassChallengeIntercept"), {
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            });
+        },
+
+        onSelectBlindCard: function(playerId, zone) {
+            // Handle blind card selection for penalties
+            this.ajaxcall(this._actionUrl("actSelectBlindFromActor"), {
+                target_player: playerId,
+                lock: true
+            }, this, function(result) {
+                // Success handled by notification
+            });
+        },
+        
+        ///////////////////////////////////////////////////
+        //// Reaction to cometD notifications
+
+        /*
+            setupNotifications:
+            
+            In this method, you associate each of your game notifications with your local method to handle it.
+            
+            Note: game notification names correspond to "notifyAllPlayers" and "notifyPlayer" calls in
+                  your herdingcats.game.php file.
+        
+        */
+        setupNotifications: function()
+        {
+            console.log( 'notifications subscriptions setup' );
+            
+            // automatically listen to the notifications, based on the `notif_xxx` function on this class.
+            this.bgaSetupPromiseNotifications();
+
+            // Set notification durations
+            this.notifqueue.setSynchronousDuration(500);
+        },  
+        
+        // Notification handlers
+        
+        notif_cardPlayed: async function( args )
+        {
+            console.log( 'notif_cardPlayed', args );
+            
+            const playerId = args.player_id;
+            const cardId = args.card_id;
+            const declaredType = args.declared_type;
+            
+            // Remove card from player's hand if it's current player
+            if (playerId == this.player_id) {
+                this.playerHand.removeFromStockById(cardId);
+            }
+            
+            // Update hand counts
+            this.updateHandCounts(args.hand_counts);
+            
+            // Update action prompts
+            this.updateActionPrompts('challengeWindow', {
+                declared_card: declaredType,
+                acting_player_name: args.player_name
+            });
+        },
+
+        notif_challenge: async function( args )
+        {
+            console.log( 'notif_challenge', args );
+            
+            // Show challenge message
+            this.showMessage(dojo.string.substitute(_('${challenger} challenges ${player}!'), {
+                challenger: args.challenger_name,
+                player: args.challenged_name
+            }), 'info');
+        },
+
+        notif_challengeResult: async function( args )
+        {
+            console.log( 'notif_challengeResult', args );
+
+            // Accept both legacy and structured keys
+            const wasBluffing = (args.was_bluffing !== undefined) ? args.was_bluffing : args.bluffing;
+            const playerName = args.player_name || _('Player');
+
+            // Determine declared and actual labels (prefer numeric types → mapped names; fallback to provided strings)
+            const declaredType = (args.declared_type !== undefined &amp;&amp; args.declared_type !== null)
+                ? args.declared_type : args.declared_card;
+            const actualType = (args.actual_card_type !== undefined &amp;&amp; args.actual_card_type !== null)
+                ? args.actual_card_type : args.actual_card;
+
+            const typeLabel = (t) =&gt; {
+                if (t === undefined || t === null) return _('unknown');
+                // Numeric id
+                if (typeof t === 'number' || /^[0-9]+$/.test(String(t))) {
+                    const key = parseInt(t);
+                    return (this.cardTypeNames &amp;&amp; this.cardTypeNames[key]) ? this.cardTypeNames[key] : _('unknown');
+                }
+                // String label from server
+                return t;
+            };
+
+            if (wasBluffing) {
+                this.showMessage(dojo.string.substitute(_('${player} was bluffing! Card was ${actual} not ${declared}'), {
+                    player: playerName,
+                    actual: typeLabel(actualType),
+                    declared: typeLabel(declaredType)
+                }), 'info');
+            } else {
+                this.showMessage(dojo.string.substitute(_('${player} was truthful! Card was indeed ${declared}'), {
+                    player: playerName,
+                    declared: typeLabel(declaredType)
+                }), 'info');
+            }
+        },
+
+        notif_handCountUpdate: async function( args )
+        {
+            console.log( 'notif_handCountUpdate', args );
+            this.updateHandCounts(args.hand_counts);
+        },
+
+        notif_herdUpdate: async function( args )
+        {
+            console.log( 'notif_herdUpdate', args );
+            
+            const playerId = args.player_id;
+            const card = args.card;
+            const isVisible = args.visible;
+            
+            if (isVisible) {
+                // Add to face-up herd
+                this.playerHerds[playerId].faceUp.addToStockWithId(card.type, card.id);
+            } else {
+                // Add to face-down herd
+                this.playerHerds[playerId].faceDown.addToStockWithId(0, card.id);
+            }
+        },
+
+        notif_discardUpdate: async function( args )
+        {
+            console.log( 'notif_discardUpdate', args );
+            
+            const playerId = args.player_id;
+            // Server may send either a full list under discard_cards or a single card under card
+            let cardsSpec = args.discard_cards !== undefined ? args.discard_cards : (args.card ? [args.card] : []);
+            // Support associative objects returned by PHP (id =&gt; card)
+            const cards = Array.isArray(cardsSpec) ? cardsSpec : Object.values(cardsSpec || {});
+            
+            if (this.playerDiscards[playerId]) {
+                this.playerDiscards[playerId].removeAll();
+                cards.forEach(card =&gt; {
+                    if (card &amp;&amp; card.id !== undefined &amp;&amp; card.type !== undefined) {
+                        this.playerDiscards[playerId].addToStockWithId(card.type, card.id);
+                    }
+                });
+            }
+        },
+
+        notif_cardRemoved: async function( args )
+        {
+            console.log( 'notif_cardRemoved', args );
+            
+            const playerId = args.player_id;
+            const cardId = args.card_id;
+            const fromZone = args.from_zone;
+            
+            // Remove card from appropriate location
+            if (fromZone === 'herd_down') {
+                this.playerHerds[playerId].faceDown.removeFromStockById(cardId);
+            } else if (fromZone === 'herd_up') {
+                this.playerHerds[playerId].faceUp.removeFromStockById(cardId);
+            } else if (fromZone === 'hand' &amp;&amp; playerId == this.player_id) {
+                this.playerHand.removeFromStockById(cardId);
+            }
+        },
+
+        notif_cardStolen: async function( args )
+        {
+            console.log( 'notif_cardStolen', args );
+            
+            const fromPlayerId = args.from_player_id;
+            const toPlayerId = args.to_player_id;
+            const card = args.card;
+            
+            // Remove from source (if current player's hand)
+            if (fromPlayerId == this.player_id) {
+                this.playerHand.removeFromStockById(card.id);
+            }
+            
+            // Add to destination herd (face-down)
+            this.playerHerds[toPlayerId].faceDown.addToStockWithId(0, card.id);
+            
+            // Update hand counts
+            this.updateHandCounts(args.hand_counts);
+        },
+
+        notif_effectResolved: async function( args )
+        {
+            console.log( 'notif_effectResolved', args );
+            
+            // Display effect resolution message
+            if (args.message) {
+                this.showMessage(args.message, 'info');
+            }
+        },
+
+        notif_gameEnd: async function( args )
+        {
+            console.log( 'notif_gameEnd', args );
+            
+            // Update final scores
+            if (args.scores) {
+                for (let playerId in args.scores) {
+                    const scoreElement = $('hc_score_' + playerId);
+                    if (scoreElement) {
+                        scoreElement.innerHTML = args.scores[playerId];
+                    }
+                }
+            }
+            
+            // Show game end message
+            this.showMessage(_('Game Over! Final scores calculated.'), 'info');
+        },
+
+        notif_playerEliminated: async function( args )
+        {
+            console.log( 'notif_playerEliminated', args );
+            
+            // Show elimination message
+            this.showMessage(dojo.string.substitute(_('${player} has been eliminated (no cards in hand)!'), {
+                player: args.player_name
+            }), 'info');
+            
+            // Update UI to show player as eliminated
+            const playerBoard = $('hc_player_board_' + args.player_id);
+            if (playerBoard) {
+                dojo.addClass(playerBoard, 'hc_eliminated');
+            }
+        }
+   });             
+});
+</file><file path="src/herdingcats_herdingcats.tpl">{OVERALL_GAME_HEADER}
+
+&lt;!-- 
+--------
+-- BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
+-- HerdingCats implementation : © &lt;Your name here&gt; &lt;Your email address here&gt;
+-- 
+-- This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+-- See http://en.boardgamearena.com/#!doc/Studio for more information.
+-- -----
+--
+-- herdingcats_herdingcats.tpl
+--
+-- This is the HTML template of your game.
+--
+-- Everything you are writing in this file will be displayed in the HTML page of your game user interface,
+-- in the "main game zone" of the screen.
+--
+-- You can use in this template:
+--   _ variables, with the format {MY_VARIABLE_ELEMENT}
+--   _ HTML block, with the BEGIN/END format
+--
+-- See your "view" PHP file to check how to set variables and control blocks
+--&gt;
+
+&lt;div id="hc_game_area"&gt;
+    &lt;!-- Current Player Hand Area --&gt;
+    &lt;div id="hc_current_hand_area" class="hc_hand_area"&gt;
+        &lt;h3 id="hc_hand_title"&gt;{YOUR_HAND_TITLE}&lt;/h3&gt;
+        &lt;div id="hc_current_hand" class="hc_hand"&gt;
+            &lt;!-- Current player's hand cards will be dynamically added here --&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Game Control Panel --&gt;
+    &lt;div id="hc_control_panel"&gt;
+        &lt;div id="hc_current_action" class="hc_action_area"&gt;
+            &lt;div id="hc_action_prompts"&gt;
+                &lt;!-- Dynamic prompts and action buttons will appear here --&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Players Board Area --&gt;
+    &lt;div id="hc_players_area"&gt;
+        &lt;!-- BEGIN player_board --&gt;
+        &lt;div id="hc_player_board_{PLAYER_ID}" class="hc_player_board" style="border-color: #{PLAYER_COLOR};"&gt;
+            
+            &lt;!-- Player Info Header --&gt;
+            &lt;div class="hc_player_info"&gt;
+                &lt;div class="hc_player_name_panel" style="background-color: #{PLAYER_COLOR};"&gt;
+                    &lt;span class="hc_player_name" style="color: {PLAYER_NAME_COLOR};"&gt;{PLAYER_NAME}&lt;/span&gt;
+                &lt;/div&gt;
+                &lt;div class="hc_player_stats"&gt;
+                    &lt;span class="hc_hand_count_label"&gt;Hand: &lt;/span&gt;
+                    &lt;span id="hc_hand_count_{PLAYER_ID}" class="hc_hand_count"&gt;{HAND_COUNT}&lt;/span&gt;
+                    &lt;span class="hc_score_label"&gt;Score: &lt;/span&gt;
+                    &lt;span id="hc_score_{PLAYER_ID}" class="hc_score"&gt;{PLAYER_SCORE}&lt;/span&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;!-- Player Herd Area --&gt;
+            &lt;div class="hc_herd_area"&gt;
+                &lt;div class="hc_herd_title"&gt;Herd:&lt;/div&gt;
+                &lt;div id="hc_herd_{PLAYER_ID}" class="hc_herd"&gt;
+                    &lt;div id="hc_herd_face_down_{PLAYER_ID}" class="hc_herd_face_down"&gt;
+                        &lt;!-- Face-down herd cards will be added here --&gt;
+                    &lt;/div&gt;
+                    &lt;div id="hc_herd_face_up_{PLAYER_ID}" class="hc_herd_face_up"&gt;
+                        &lt;!-- Face-up herd cards will be added here --&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;!-- Player Discard Pile --&gt;
+            &lt;div class="hc_discard_area"&gt;
+                &lt;div class="hc_discard_title"&gt;Discard:&lt;/div&gt;
+                &lt;div id="hc_discard_{PLAYER_ID}" class="hc_discard_pile"&gt;
+                    &lt;!-- Discarded cards will be added here --&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+        &lt;/div&gt;
+        &lt;!-- END player_board --&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Target Selection Overlay (hidden by default) --&gt;
+    &lt;div id="hc_target_overlay" class="hc_overlay" style="display: none;"&gt;
+        &lt;div class="hc_target_selection"&gt;
+            &lt;h3 id="hc_target_title"&gt;Select Target&lt;/h3&gt;
+            &lt;div id="hc_target_options"&gt;
+                &lt;!-- Target selection buttons will be added here dynamically --&gt;
+            &lt;/div&gt;
+            &lt;button id="hc_cancel_target" class="hc_button hc_cancel_button"&gt;Cancel&lt;/button&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Card Declaration Overlay (hidden by default) --&gt;
+    &lt;div id="hc_declare_overlay" class="hc_overlay" style="display: none;"&gt;
+        &lt;div class="hc_declaration_panel"&gt;
+            &lt;h3&gt;Declare Card Type&lt;/h3&gt;
+            &lt;div id="hc_declare_preview" class="hc_declare_preview"&gt;&lt;/div&gt;
+            &lt;div id="hc_card_type_buttons"&gt;
+                &lt;button class="hc_card_type_btn" data-type="1"&gt;Kitten&lt;/button&gt;
+                &lt;button class="hc_card_type_btn" data-type="2"&gt;Show Cat&lt;/button&gt;
+                &lt;button class="hc_card_type_btn" data-type="3"&gt;Alley Cat&lt;/button&gt;
+                &lt;button class="hc_card_type_btn" data-type="4"&gt;Catnip&lt;/button&gt;
+                &lt;button class="hc_card_type_btn" data-type="5"&gt;Animal Control&lt;/button&gt;
+                &lt;button class="hc_card_type_btn" data-type="6"&gt;Laser Pointer&lt;/button&gt;
+            &lt;/div&gt;
+            &lt;button id="hc_cancel_declare" class="hc_button hc_cancel_button"&gt;Cancel&lt;/button&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+&lt;/div&gt;
+
+&lt;script type="text/javascript"&gt;
+// Javascript HTML templates
+var jstpl_hand_card = '&lt;div class="hc_card hc_hand_card" id="hc_card_${card_id}" data-card-id="${card_id}" data-card-type="${card_type}"&gt;&lt;/div&gt;';
+
+var jstpl_herd_card_face_down = '&lt;div class="hc_card hc_herd_card hc_face_down" id="hc_card_${card_id}" data-card-id="${card_id}" data-declared-type="${declared_type}"&gt;&lt;/div&gt;';
+
+var jstpl_herd_card_face_up = '&lt;div class="hc_card hc_herd_card hc_face_up" id="hc_card_${card_id}" data-card-id="${card_id}" data-card-type="${card_type}"&gt;&lt;/div&gt;';
+
+var jstpl_discard_card = '&lt;div class="hc_card hc_discard_card hc_face_up" id="hc_card_${card_id}" data-card-id="${card_id}" data-card-type="${card_type}"&gt;&lt;/div&gt;';
+
+var jstpl_target_button = '&lt;button class="hc_target_btn" data-target-id="${target_id}" data-target-zone="${target_zone}"&gt;${target_name}&lt;/button&gt;';
+
+var jstpl_challenge_prompt = '&lt;div class="hc_challenge_prompt"&gt;Do you want to challenge ${player_name}\'s declaration of ${card_name}?&lt;/div&gt;';
+&lt;/script&gt;
+
+{OVERALL_GAME_FOOTER}</file><file path="src/herdingcats.css">/**
+ *------
+ * BGA framework: Gregory Isabelli &amp; Emmanuel Colin &amp; BoardGameArena
+ * HerdingCats implementation : © &lt;Your name here&gt; &lt;Your email address here&gt;
+ *
+ * This code has been produced on the BGA studio platform for use on http://boardgamearena.com.
+ * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * -----
+ *
+ * herdingcats.css
+ *
+ * HerdingCats stylesheet
+ *
+ */
+
+/*
+    This is the CSS stylesheet of your game User Interface.
+    
+    Styles defined on this file will be applied to the HTML elements you define in your
+    HTML template (herdingcats_herdingcats.tpl), and to HTML elements you create dynamically
+    (in herdingcats.js).
+    
+    Usually, you are using CSS to:
+    
+    1°) define the overall layout of your game
+        (ex: place the board on the top left, place player's hand beside, place the deck on the right, ...).
+
+    2°) create your CSS-sprites:
+        All images of your games should be gathered into a small number of image files. Then, using
+        background-image and background-position CSS properties, you create HTML blocks that can 
+        display these images correctly (see example below).
+    
+    3°) ... anything else:
+        It is really easy to add and remove CSS classes dynamically from your Javascript with
+        dojo.addClass and dojo.removeClass. It is also easy to check if an element has a class
+        (dojo.hasClass) or to get all elements with a specific class (dojo.query). This is why,
+        very often, using CSS classes for the logic of your user interface allow you to do complex
+        thing easily.
+        
+        
+     Note: on the production platform, this file will be compressed and comments will be removed.
+           Consequently, don't hesitate to put as many comments as necessary.
+*/
+
+
+/* Note: you must not use any @import directive */
+
+
+/********* You can start writing your CSS below this line: **********/
+
+/* ======================
+   MAIN GAME LAYOUT
+   ====================== */
+
+#hc_game_area {
+    width: 100%;
+    min-height: 600px;
+    font-family: Arial, sans-serif;
+    position: relative;
+}
+
+/* Current Player Hand Area */
+#hc_current_hand_area {
+    background: linear-gradient(135deg, #f5f5f5, #e8e8e8);
+    border: 2px solid #ccc;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+#hc_hand_title {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+#hc_current_hand {
+    display: block;
+    min-height: 96px;
+    padding: 10px;
+    background: rgba(255,255,255,0.5);
+    border-radius: 5px;
+}
+
+/* Control Panel */
+#hc_control_panel {
+    background: linear-gradient(135deg, #fff8dc, #f0e68c);
+    border: 2px solid #daa520;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+#hc_action_prompts {
+    text-align: center;
+    font-size: 16px;
+    color: #333;
+    font-weight: bold;
+}
+
+/* Players Area */
+#hc_players_area {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+}
+
+/* ======================
+   PLAYER BOARDS
+   ====================== */
+
+.hc_player_board {
+    border: 3px solid #ccc;
+    border-radius: 15px;
+    padding: 15px;
+    background: linear-gradient(135deg, #fafafa, #f0f0f0);
+    min-width: 280px;
+    max-width: 350px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transition: box-shadow 0.3s ease;
+}
+
+.hc_player_board:hover {
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+/* Player Info Header */
+.hc_player_info {
+    margin-bottom: 15px;
+}
+
+.hc_player_name_panel {
+    padding: 8px 12px;
+    border-radius: 20px;
+    text-align: center;
+    margin-bottom: 8px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.hc_player_name {
+    font-weight: bold;
+    font-size: 14px;
+    text-shadow: 1px 1px 1px rgba(0,0,0,0.3);
+}
+
+.hc_player_stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #666;
+}
+
+.hc_hand_count, .hc_score {
+    font-weight: bold;
+    color: #333;
+}
+
+/* Herd Area */
+.hc_herd_area {
+    margin-bottom: 15px;
+}
+
+.hc_herd_title, .hc_discard_title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #555;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.hc_herd {
+    background: rgba(255,255,255,0.7);
+    border: 1px dashed #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 100px;
+}
+
+.hc_herd_face_down, .hc_herd_face_up {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 5px;
+}
+
+.hc_discard_area {
+    margin-top: 10px;
+}
+
+.hc_discard_pile {
+    background: rgba(255,255,255,0.7);
+    border: 1px dashed #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 60px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Stock visuals for ebg.stock items */
+.stockitem {
+    border: 2px solid #333;
+    border-radius: 8px;
+    margin: 4px;
+    background-size: cover !important;
+    background-position: center center !important;
+    background-repeat: no-repeat !important;
+}
+
+/* ======================
+   CARD STYLING
+   ====================== */
+
+.hc_card {
+    width: 72px;
+    height: 96px;
+    border: 2px solid #333;
+    border-radius: 8px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.hc_card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+/* Hand Cards */
+.hc_hand_card {
+    border-color: #4CAF50;
+    box-shadow: 0 2px 4px rgba(76,175,80,0.3);
+}
+
+.hc_hand_card:hover {
+    border-color: #45a049;
+    box-shadow: 0 4px 8px rgba(76,175,80,0.5);
+}
+
+/* Card Backgrounds - Using placeholders until art is available */
+.hc_card[data-card-type="1"] { /* Kitten */
+    background-image: url('img/herding_cats_art/kitten.jpeg');
+    background-color: #ffb3ba; /* Pink fallback */
+}
+
+.hc_card[data-card-type="2"] { /* Show Cat */
+    background-image: url('img/herding_cats_art/showcat.jpeg');
+    background-color: #ffdfba; /* Peach fallback */
+}
+
+.hc_card[data-card-type="3"] { /* Alley Cat */
+    background-image: url('img/herding_cats_art/alleycat.jpeg');
+    background-color: #ffffba; /* Yellow fallback */
+}
+
+.hc_card[data-card-type="4"] { /* Catnip */
+    background-image: url('img/herding_cats_art/catnip.jpeg');
+    background-color: #baffc9; /* Light green fallback */
+}
+
+.hc_card[data-card-type="5"] { /* Animal Control */
+    background-image: url('img/herding_cats_art/animalcontrol.jpeg');
+    background-color: #bae1ff; /* Light blue fallback */
+}
+
+.hc_card[data-card-type="6"] { /* Laser Pointer */
+    background-image: url('img/herding_cats_art/laserpointer.jpeg');
+    background-color: #e1baff; /* Light purple fallback */
+}
+
+/* Face-down cards show cardback */
+.hc_face_down {
+    background-image: url('img/herding_cats_art/cardback.jpeg');
+    background-color: #8B4513; /* Brown fallback */
+    border-color: #654321;
+}
+
+.hc_face_down:hover {
+    border-color: #8B4513;
+}
+
+/* Face-up herd cards (protected) */
+.hc_herd_card.hc_face_up {
+    border-color: #FF9800;
+    box-shadow: 0 0 0 2px rgba(255,152,0,0.3);
+}
+
+/* Discard pile cards */
+.hc_discard_card {
+    opacity: 0.8;
+    border-color: #666;
+    filter: grayscale(20%);
+}
+
+.hc_discard_card:hover {
+    transform: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Card Selection States */
+.hc_card.hc_selected {
+    border-color: #2196F3;
+    box-shadow: 0 0 0 3px rgba(33,150,243,0.4);
+    transform: translateY(-5px);
+}
+
+.hc_card.hc_selectable {
+    cursor: pointer;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(33,150,243,0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(33,150,243,0); }
+    100% { box-shadow: 0 0 0 0 rgba(33,150,243,0); }
+}
+
+.hc_card.hc_disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(50%);
+}
+
+/* ======================
+   OVERLAYS &amp; MODALS
+   ====================== */
+
+.hc_overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.hc_target_selection, .hc_declaration_panel {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+#hc_target_title {
+    margin-top: 0;
+    text-align: center;
+    color: #333;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+#hc_target_options, #hc_card_type_buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+/* ======================
+   BUTTONS
+   ====================== */
+
+.hc_button, .hc_target_btn, .hc_card_type_btn {
+    padding: 12px 20px;
+    border: 2px solid #4CAF50;
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    color: white;
+    border-radius: 25px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.hc_button:hover, .hc_target_btn:hover, .hc_card_type_btn:hover {
+    background: linear-gradient(135deg, #45a049, #4CAF50);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.hc_button:active, .hc_target_btn:active, .hc_card_type_btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.hc_cancel_button {
+    background: linear-gradient(135deg, #f44336, #da190b);
+    border-color: #f44336;
+}
+
+.hc_cancel_button:hover {
+    background: linear-gradient(135deg, #da190b, #f44336);
+}
+
+/* Challenge buttons */
+.hc_challenge_button {
+    background: linear-gradient(135deg, #FF9800, #F57C00);
+    border-color: #FF9800;
+}
+
+.hc_challenge_button:hover {
+    background: linear-gradient(135deg, #F57C00, #FF9800);
+}
+
+.hc_pass_button {
+    background: linear-gradient(135deg, #9E9E9E, #757575);
+    border-color: #9E9E9E;
+}
+
+.hc_pass_button:hover {
+    background: linear-gradient(135deg, #757575, #9E9E9E);
+}
+
+/* ======================
+   RESPONSIVE DESIGN
+   ====================== */
+
+@media (max-width: 768px) {
+    #hc_players_area {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .hc_player_board {
+        min-width: 250px;
+        max-width: 90%;
+    }
+    
+    #hc_current_hand {
+        justify-content: center;
+    }
+    
+    .hc_card {
+        width: 60px;
+        height: 80px;
+    }
+    
+    .hc_target_selection, .hc_declaration_panel {
+        margin: 20px;
+        padding: 20px;
+        width: calc(100% - 40px);
+    }
+}
+
+@media (max-width: 480px) {
+    .hc_card {
+        width: 50px;
+        height: 67px;
+    }
+    
+    .hc_player_board {
+        padding: 10px;
+        min-width: 200px;
+    }
+    
+    .hc_button, .hc_target_btn, .hc_card_type_btn {
+        padding: 8px 16px;
+        font-size: 12px;
+    }
+}
+
+/* ======================
+   ANIMATION EFFECTS
+   ====================== */
+
+.hc_card_move {
+    transition: all 0.5s ease;
+}
+
+.hc_card_flip {
+    animation: flipCard 0.6s ease;
+}
+
+@keyframes flipCard {
+    0% { transform: rotateY(0); }
+    50% { transform: rotateY(90deg); }
+    100% { transform: rotateY(0); }
+}
+
+.hc_card_highlight {
+    animation: highlight 1s ease 2;
+}
+
+@keyframes highlight {
+    0%, 100% { box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    50% { box-shadow: 0 0 20px rgba(255,215,0,0.8); }
+}
+
+/* ======================
+   GAME STATE INDICATORS
+   ====================== */
+
+.hc_current_player .hc_player_board {
+    border-width: 4px;
+    box-shadow: 0 0 15px rgba(76,175,80,0.4);
+}
+
+.hc_challenged_player .hc_player_board {
+    border-color: #FF5722;
+    box-shadow: 0 0 15px rgba(255,87,34,0.4);
+}
+
+.hc_intercepting_player .hc_player_board {
+    border-color: #9C27B0;
+    box-shadow: 0 0 15px rgba(156,39,176,0.4);
+}
+
+/* ======================
+   TOOLTIPS &amp; HELP
+   ====================== */
+
+.hc_card[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+}
+
+/* ======================
+   ACCESSIBILITY
+   ====================== */
+
+@media (prefers-reduced-motion: reduce) {
+    .hc_card, .hc_button, .hc_target_btn, .hc_card_type_btn {
+        transition: none;
+    }
+    
+    .hc_card_move, .hc_card_flip, .hc_card_highlight {
+        animation: none;
+    }
+    
+    .hc_overlay {
+        animation: none;
+    }
+}
+
+.hc_card:focus, .hc_button:focus, .hc_target_btn:focus, .hc_card_type_btn:focus {
+    outline: 3px solid #2196F3;
+    outline-offset: 2px;
+}
+
+
+
+/* Declaration overlay preview */
+.hc_declare_preview {
+    margin: 8px 0 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.hc_declare_preview_card {
+    width: 48px;
+    height: 64px;
+    border: 1px solid #555;
+    border-radius: 6px;
+}
+.hc_declare_preview_label {
+    font-size: 12px;
+    opacity: 0.8;
+}
+</file></codebase>

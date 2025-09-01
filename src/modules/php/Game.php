@@ -25,6 +25,7 @@ class Game extends \Bga\GameFramework\Table
     private static array $CARD_TYPES;
     private const G_PENDING_CARD = 'g_pending_card';
     private const G_PENDING_DECL = 'g_pending_decl';
+    private const G_PENDING_ACTUAL = 'g_pending_actual';
     private const G_ACTOR = 'g_actor';
     private const G_TARGET_PLAYER = 'g_target_player';
     private const G_TARGET_ZONE = 'g_target_zone'; // 1 = hand, 2 = herd
@@ -47,6 +48,7 @@ class Game extends \Bga\GameFramework\Table
         $this->initGameStateLabels([
             self::G_PENDING_CARD => 10,
             self::G_PENDING_DECL => 11,
+            self::G_PENDING_ACTUAL => 17,
             self::G_ACTOR => 12,
             self::G_TARGET_PLAYER => 13,
             self::G_TARGET_ZONE => 14,
@@ -527,9 +529,20 @@ class Game extends \Bga\GameFramework\Table
             'hand_counts' => $handCounts,
         ]);
 
+        // Determine the actual card type from the player's current hand list (dummy or real)
+        $actualType = 0;
+        $handList = $this->getHandList($player_id);
+        foreach ($handList as $c) {
+            if ((int)$c['id'] === (int)$card_id) {
+                $actualType = isset($c['type']) ? (int)$c['type'] : 0;
+                break;
+            }
+        }
+
         // Store pending declaration info for downstream states
         $this->setGameStateValue(self::G_PENDING_CARD, $card_id);
         $this->setGameStateValue(self::G_PENDING_DECL, $decl);
+        $this->setGameStateValue(self::G_PENDING_ACTUAL, $actualType);
         $this->setGameStateValue(self::G_ACTOR, $player_id);
         $this->setGameStateValue(self::G_TARGET_PLAYER, 0);
         $this->setGameStateValue(self::G_TARGET_ZONE, 0);
@@ -625,9 +638,10 @@ class Game extends \Bga\GameFramework\Table
 
     public function stResolveChallenge(): void
     {
-        // Minimal resolution for prototype: use stored pending + target to drive next state
-        $actor     = (int)$this->getGameStateValue(self::G_ACTOR);
-        $declared  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        // Use stored pending data to resolve challenge truthfully
+        $actor      = (int)$this->getGameStateValue(self::G_ACTOR);
+        $declared   = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        $actualType = (int)$this->getGameStateValue(self::G_PENDING_ACTUAL);
         $challenger = (int)$this->getGameStateValue(self::G_CHALLENGER); // set in actChallenge
 
         if ($challenger === 0) {
@@ -647,17 +661,31 @@ class Game extends \Bga\GameFramework\Table
             return;
         }
 
-        // Force a loss for the challenger in this prototype so we can reach penalty UI
-        // i.e., the declaration is considered truthful
+        $wasBluffing = ($declared !== $actualType);
         $this->notify->all('challengeResult', '', [
-            'player_name'    => $this->getPlayerNameById($actor),
-            'declared_type'  => $declared,
-            'was_bluffing'   => false,
+            'player_name'      => $this->getPlayerNameById($actor),
+            'declared_type'    => $declared,
+            'actual_card_type' => $actualType,
+            'was_bluffing'     => $wasBluffing,
         ]);
 
-        // Active player (actor) may discard one card from opponent hand
-        $this->gamestate->changeActivePlayer($actor);
-        $this->gamestate->nextState('challengeFailed');
+        if ($wasBluffing) {
+            // Discard the played card (no herd placement)
+            $cardId = (int)$this->getGameStateValue(self::G_PENDING_CARD);
+            if ($cardId > 0) {
+                $this->notify->all('discardUpdate', '', [
+                    'player_id' => $actor,
+                    'card'      => [ 'id' => $cardId, 'type' => $actualType ],
+                ]);
+            }
+            // Challenger wins: they pick a blind penalty from actor
+            $this->gamestate->changeActivePlayer($challenger);
+            $this->gamestate->nextState('bluffCaught');
+        } else {
+            // Actor was truthful: actor picks a blind penalty from challenger
+            $this->gamestate->changeActivePlayer($actor);
+            $this->gamestate->nextState('challengeFailed');
+        }
     }
 
     public function stResolveInterceptChallenge(): void
@@ -998,6 +1026,16 @@ class Game extends \Bga\GameFramework\Table
     // Minimal end turn handler to rotate to next player
     public function stEndTurn(): void
     {
+        // Clear pending turn data to avoid leakage across turns
+        $this->setGameStateValue(self::G_PENDING_CARD, 0);
+        $this->setGameStateValue(self::G_PENDING_DECL, 0);
+        $this->setGameStateValue(self::G_PENDING_ACTUAL, 0);
+        $this->setGameStateValue(self::G_ACTOR, 0);
+        $this->setGameStateValue(self::G_TARGET_PLAYER, 0);
+        $this->setGameStateValue(self::G_TARGET_ZONE, 0);
+        $this->setGameStateValue(self::G_CHALLENGER, 0);
+        $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
+
         $this->activeNextPlayer();
         $this->gamestate->nextState('nextPlayer');
     }

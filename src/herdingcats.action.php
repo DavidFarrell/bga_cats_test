@@ -97,21 +97,15 @@ class action_herdingcats extends APP_GameAction
     //////////// 
 
     /**
-     * Player challenges the declaration made by the active player
-     * 
-     * @param int $actor_id - The player being challenged
+     * Player challenges the declaration made by the active player (new stack)
      */
     public function actChallenge()
     {
         self::setAjaxMode();
-        
-        $actor_id = self::getArg("actor_id", AT_posint, true);
-        
-        // Check action is valid
+        // Check action is valid; new-stack server derives actor/challenger
         $this->game->checkAction('actChallenge');
-        
-        $this->game->actChallenge($actor_id);
-        
+        $this->game->actChallenge();
+
         self::ajaxResponse();
     }
 
