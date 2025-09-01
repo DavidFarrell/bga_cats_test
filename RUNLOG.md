@@ -24,6 +24,40 @@ Template
 
 ---
 
+## 2025-08-31 17:15 PT — K3 pass; prepping K4
+- Studio account: PaidiaGames0 (Studio domain)
+- Table: not recorded (fresh table via Express start)
+- Deployed from: local workspace (auto-sync active)
+
+- Tests attempted:
+  - [x] [K3 — Bluff, unchallenged](testplans/kitten.md#k3)
+
+- Key observations:
+  - A declared Kitten with a non-Kitten; B passed; herd-FD +1, A hand 7 → 6.
+  - herdUpdate visible=false; UI shows one `.stockitem` in `#hc_herd_face_down_<A>`.
+
+- Next steps:
+  - Run [K4 — Bluff, challenged and challenge succeeds](testplans/kitten.md#k4): assert A hand 7 → 5, no herd placement, and penalty discard from A by B.
+
+## 2025-08-31 17:10 PT — K2 pass; staging order aligned
+- Studio account: PaidiaGames0 (Studio domain)
+- Tables: not recorded (multiple during verification)
+- Deployed from: local workspace (auto-sync active)
+
+- Tests attempted:
+  - [x] [K2 — Truthful, challenged and challenge fails](testplans/kitten.md#k2)
+
+- Key observations:
+  - Staging hand size exact (no extra slot); 1-based slot indexing end-to-end.
+  - Staging order matches owner-visible hand order; slot selection removes the intended card.
+  - Verified both directions (A→B and B→A) after an initial play and subsequent challenge.
+
+- Issues/Risks:
+  - None observed for K2 after alignment; deck-null guard and dummy-order persistence in place.
+
+- Next steps:
+  - Pick up [K3 — Bluff, unchallenged](testplans/kitten.md#k3) and [K4 — Bluff, challenged and challenge succeeds](testplans/kitten.md#k4) next session.
+
 ## 2025-08-31 14:35 PT — Bootstrapped E2E + K1
 - Studio account: PaidiaGames0 (Studio domain)
 - Table: https://studio.boardgamearena.com/1/herdingcats?table=763474

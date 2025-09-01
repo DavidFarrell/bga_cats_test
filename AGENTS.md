@@ -23,7 +23,7 @@ Project Structure (src/)
 Dev Workflow
 - Mount Studio files once: ./mount_bga.sh (mounts at ~/BGA_mount)
 - Import (one-time): ./pull.sh (Studio → src/)
-- Deploy: ./deploy.sh (or ./deploy.sh --watch for auto-sync)
+- Deploy: ./deploy.sh (or ./deploy.sh --watch for auto-sync) - it will be running in background but if user says it is not, you use it like this
 - Diff: ./sync_status.sh; Unmount: ./unmount_bga.sh
 
 Studio Quickstart (Manual)
@@ -75,6 +75,7 @@ Coding Conventions
 - PHP: 4 spaces; classes CamelCase; methods lowerCamelCase; constants UPPER_SNAKE_CASE; snake_case DB fields.
 - JS: 4 spaces; Dojo/ebg AMD pattern; keep notifications concise and consistent.
 - Keep changes localized and consistent with existing code.
+- code lives in /src
 
 Handy Studio Links
 - Control Panel: https://studio.boardgamearena.com/controlpanel
@@ -87,4 +88,3 @@ What To Do First
 - Skim src/states.inc.php to understand state machine and transitions.
 - Review src/herdingcats.game.php + herdingcats.action.php for server actions and endpoints.
 - Use testplan.md and testplans/* to drive validation; automate with docs/playwright_e2e_guide.md patterns.
-

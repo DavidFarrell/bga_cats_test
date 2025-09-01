@@ -77,11 +77,11 @@ UI/Validation Checklist (all cases)
 
 Case Checklist
 - [x] [K1 — Truthful, unchallenged](#k1)
-- [ ] [K2 — Truthful, challenged and challenge fails](#k2)
-- [ ] [K3 — Bluff, unchallenged](#k3)
-- [ ] [K4 — Bluff, challenged and challenge succeeds](#k4)
-- [ ] [K5 — Multiple challengers, A truthful](#k5)
-- [ ] [K6 — End-of-turn and end-of-game check](#k6)
+- [x] [K2 — Truthful, challenged and challenge fails](#k2)
+ - [x] [K3 — Bluff, unchallenged](#k3)
+ - [ ] [K4 — Bluff, challenged and challenge succeeds](#k4)
+ - [ ] [K5 — Multiple challengers, A truthful](#k5)
+ - [ ] [K6 — End-of-turn and end-of-game check](#k6)
 
 Case Index (JSON)
 ```

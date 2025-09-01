@@ -11,6 +11,8 @@
 # Temporary files
 *.tmp
 *.log
+# Agent cycle counter state
+.context_cycles
 # Utility scripts
 mount_*.sh
 unmount_*.sh
