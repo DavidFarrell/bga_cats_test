@@ -36,14 +36,14 @@ Interception From Hand (vs. Alley Cat/Catnip)
 <a id="lp4"></a>
 Case LP4 — Hand intercept, unchallenged
 1) B is targeted in hand (AC/CN); after slot selection, B declares LP from hand.
-Expected: Selected slot remains hidden; attack canceled; B discards LP face-up; A’s card still enters herd-FD as declared identity; logs reflect cancel.
+Expected: Selected slot remains hidden; attack canceled; B discards LP face-up; A’s played card is discarded face-up (no herd placement); logs reflect cancel.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 <a id="lp5"></a>
 Case LP5 — Hand intercept claim challenged
 1) C challenges B’s LP-from-hand.
-Expected (truthful): B reveals/discards LP; C discards blind penalty; cancel stands; selected slot stays hidden.
+Expected (truthful): B reveals/discards LP; C discards blind penalty; cancel stands; selected slot stays hidden; A’s played card is discarded face-up.
 Expected (bluff): B takes penalty; original attack proceeds; selected slot is revealed and resolved.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
@@ -52,14 +52,14 @@ Interception From Herd (vs. Animal Control)
 <a id="lp6"></a>
 Case LP6 — Herd intercept, unchallenged
 1) B is targeted in herd; after FD slot selection, B declares LP from herd.
-Expected: Selected herd card remains hidden; attack canceled; B discards LP face-up from herd; A’s card still enters herd-FD as Animal Control.
+Expected: Selected herd card remains hidden; attack canceled; B discards LP face-up from herd; A’s played card is discarded face-up (no herd placement).
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 <a id="lp7"></a>
 Case LP7 — Herd intercept claim challenged
 1) C challenges B’s LP-from-herd.
-Expected (truthful): B discards LP; C discards blind penalty; cancel stands; selected card stays hidden.
+Expected (truthful): B discards LP; C discards blind penalty; cancel stands; selected card stays hidden; A’s played card is discarded face-up.
 Expected (bluff): B takes penalty; original AN proceeds revealing selected herd card.
 Cleanup:
 - Express Stop the game before proceeding to any other case.

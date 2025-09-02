@@ -154,12 +154,19 @@ $machinestates = [
         ->transitions([
             'interceptDeclared' => 60,
             'noIntercept' => 80,
-            'noInterceptPenalty' => 52,
+            // For Alley Cat unchallenged path: prepare effect selection via GAME state
+            'prepareEffect' => 52,
+            // Unchallenged Alley Cat effect selection (no intercept): go directly to a distinct
+            // selection state instead of reusing the penalty state/labels.
+            'noInterceptEffect' => 41,
+            // Intercept immediately cancels the attack (no herd add) and ends turn
+            'cancelled' => 95,
             'zombie' => 80,  // Handle zombie players
         ])
         ->build(),
 
-    // Prepare attacker-controlled penalty selection (e.g., Alley Cat) after defender passes intercept
+    // Prepare attacker-controlled penalty selection after a failed challenge (truthful declaration)
+    // Note: Alley Cat (unchallenged) should NOT route here anymore.
     52 => GameStateBuilder::create()
         ->name('prepareAttackerPenalty')
         ->description('Preparing attacker penalty selection')
@@ -167,6 +174,25 @@ $machinestates = [
         ->action('stPrepareAttackerPenalty')
         ->transitions([
             'toPenalty' => 32,
+            'toEffectSelect' => 41,
+        ])
+        ->build(),
+
+    // Alley Cat effect selection (unchallenged path): attacker selects one blind slot from defender's hand.
+    41 => GameStateBuilder::create()
+        ->name('alleyCatEffectSelect')
+        ->description(clienttranslate('${actplayer} may discard a card from opponent\'s hand'))
+        ->descriptionmyturn(clienttranslate('You may discard one card from opponent\'s hand'))
+        ->type(StateType::ACTIVE_PLAYER)
+        // Reuse the same args shape as truthful penalty to get hand count/target
+        ->args('argAttackerSelectTruthfulPenalty')
+        ->possibleactions([
+            // Reuse the same action used to pick a blind card from a hand
+            'actSelectBlindFromChallenger'
+        ])
+        ->transitions([
+            'toResolve' => 80,
+            'zombie' => 80,
         ])
         ->build(),
 

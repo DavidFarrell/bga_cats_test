@@ -1,7 +1,7 @@
 Herding Cats — Animal Control Test Plan
 
 Summary
-- Targeted herd removal. Must select a face-down herd card. Reveal selected card; if it is Animal Control, ineffective (flip face-up and protect). Otherwise discard it from defender’s herd. Attacker’s played card enters herd-FD as Animal Control.
+- Targeted herd removal. Must select a face-down herd card. Reveal selected card; if it is Animal Control, ineffective (flip face-up and protect). Otherwise discard it from defender’s herd. Attacker’s played card goes to herd-FD as Animal Control unless ineffective-against-itself triggers or a Laser Pointer interception stands; in those cases, the attacker’s played card is discarded face-up (no herd placement).
 
 Preconditions
 - Players A (active) and B (defender); B has ≥1 face-down herd card.
@@ -27,17 +27,17 @@ Case AN2 — Truthful, unchallenged, ineffective-against-itself
 1) As AN1, but reveal shows Animal Control.
 Expected:
 - Ineffective: selected card flips face-up in B’s herd and is protected.
-- A’s played card still enters A herd-FD; A hand counter -1.
+- A’s played card is discarded face-up (thwarted); A hand counter -1.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 <a id="an3"></a>
 Case AN3 — Truthful, challenged and challenge fails
-1) B/C challenge A’s claim; truth stands.
-2) A selects blind penalty from each challenger’s hand; reveal + discard.
+1) B challenges A’s claim; truth stands.
+2) A selects a blind slot from B’s hand; reveal + discard.
 3) Proceed with AN1/AN2.
 Expected:
-- Challenger(s) hand counters -1 each; logs show penalties then effect.
+- Challenger hand counter -1; logs show penalty then effect (AN1 normal removal → A’s card to herd-FD; AN2 ineffective → A’s card discarded face-up).
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
@@ -47,7 +47,7 @@ Case AN4 — Bluff, unchallenged
 2) Proceed using declared identity.
 Expected:
 - AN1/AN2 behavior applies based on revealed defender card.
-- A’s played card enters A herd-FD as Animal Control; no reveal of the played card.
+- A’s played card enters A herd-FD as Animal Control for normal removal; if ineffective (vs Animal Control), A’s played card is discarded face-up (no herd placement).
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
@@ -65,7 +65,7 @@ Case AN6 — Defender intercepts with Laser Pointer from herd (unchallenged)
 Expected:
 - Selected herd card remains hidden and untouched.
 - B discards LP face-up from herd; B herd count -1.
-- A’s played card still enters A herd-FD.
+- A’s played card is discarded face-up (no herd placement).
 - Logs: LP interception (herd) and cancel.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
@@ -73,7 +73,7 @@ Cleanup:
 <a id="an7"></a>
 Case AN7 — Interception claim challenged
 1) C challenges B’s LP-from-herd claim.
-Expected (truthful LP): B discards LP; C discards blind penalty; selected card remains hidden; A’s card to herd-FD.
+Expected (truthful LP): B discards LP; C discards blind penalty; selected card remains hidden; A’s played card is discarded face-up (no herd placement).
 Expected (bluff LP): B takes penalty; AN proceeds (AN1/AN2) and selected card is revealed.
 Cleanup:
 - Express Stop the game before proceeding to any other case.

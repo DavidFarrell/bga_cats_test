@@ -57,9 +57,9 @@ UI/Validation Checklist
 - Counters and logs update correctly; page refresh preserves herd-FD and owner-only identity of stolen Show Cat.
 
 Case Checklist
-- [ ] [SC1 — Truthful, unchallenged](#sc1)
-- [ ] [SC2 — Truthful, challenged and challenge fails](#sc2)
-- [ ] [SC3 — Bluff, challenged and challenge succeeds](#sc3)
+- [x] [SC1 — Truthful, unchallenged](#sc1)
+- [x] [SC2 — Truthful, challenged and challenge fails](#sc2)
+- [x] [SC3 — Bluff, challenged and challenge succeeds](#sc3)
 - [ ] [SC4 — Scoring without Kitten synergy](#sc4)
 - [ ] [SC5 — Scoring with Kitten synergy](#sc5)
 - [ ] [SC6 — Stolen from hand by Catnip](#sc6)

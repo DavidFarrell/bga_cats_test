@@ -309,6 +309,9 @@ function (dojo, declare) {
                 case 'interceptChallengerSelectPenalty':
                     this.onEnteringState_selectPenalty(a);
                     break;
+                case 'alleyCatEffectSelect':
+                    this.onEnteringState_selectPenalty(a);
+                    break;
             }
         },
 
@@ -357,6 +360,10 @@ function (dojo, declare) {
         onEnteringState_interceptDeclare: function(args) {
             if (this.isCurrentPlayerActive()) {
                 this.updateActionPrompts('interceptDeclare', args);
+                // Allow the defender to select a Laser Pointer card from hand
+                if (this.playerHand && this.playerHand.setSelectionMode) {
+                    this.playerHand.setSelectionMode(1);
+                }
             }
         },
 
@@ -386,6 +393,12 @@ function (dojo, declare) {
                     this.playerHand.setSelectionMode(0);
                     this.hideDeclarationDialog();
                     break;
+                case 'interceptDeclare':
+                    // Disable hand selection after intercept window
+                    if (this.playerHand && this.playerHand.setSelectionMode) {
+                        this.playerHand.setSelectionMode(0);
+                    }
+                    break;
                     
                 case 'selectTarget':
                     this.hideTargetSelection();
@@ -399,6 +412,7 @@ function (dojo, declare) {
                     var prev = $('hc_declared_preview'); if (prev) dojo.destroy(prev);
                     break;
                 case 'attackerSelectTruthfulPenalty':
+                case 'alleyCatEffectSelect':
                 case 'challengerSelectBluffPenalty':
                     var ph = $('hc_penalty_hand'); if (ph) dojo.destroy(ph);
                     break;
@@ -445,6 +459,13 @@ function (dojo, declare) {
                             target_player_id: challenger.player_id
                         };
                         this.renderPenaltyHand(challenger.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
+                    }
+                    break;
+                case 'alleyCatEffectSelect':
+                    if (args && args.challengers && args.challengers.length > 0) {
+                        const target = args.challengers[0];
+                        this._penaltyArgs = { target_player_id: target.player_id };
+                        this.renderPenaltyHand(target.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
                     }
                     break;
 
@@ -505,6 +526,9 @@ function (dojo, declare) {
                     promptText = _('Player claims to have Laser Pointer. Challenge?');
                     break;
                 case 'attackerSelectTruthfulPenalty':
+                    promptText = _('You may discard one card from opponent\'s hand');
+                    break;
+                case 'alleyCatEffectSelect':
                     promptText = _('You may discard one card from opponent\'s hand');
                     break;
                 case 'challengerSelectBluffPenalty':
@@ -791,7 +815,9 @@ function (dojo, declare) {
         onSelectTarget: function(targetId, targetZone) {
             this.hideTargetSelection();
             
+            // Send both player_id (preferred) and legacy slot_index for compatibility
             this.ajaxcall(this._actionUrl("actSelectTargetSlot"), {
+                player_id: targetId,
                 slot_index: targetId,
                 zone: targetZone,
                 lock: true
@@ -813,10 +839,27 @@ function (dojo, declare) {
         },
 
         onDeclareIntercept: function() {
+            // Defender must select a Laser Pointer card from hand
+            let sel = [];
+            try { sel = this.playerHand ? this.playerHand.getSelectedItems() : []; } catch(e) { sel = []; }
+            if (!sel || sel.length === 0) {
+                this.showMessage(_('Please select your Laser Pointer from hand'), 'error');
+                return;
+            }
+            const cardId = parseInt(sel[0].id);
+            if (isNaN(cardId)) {
+                this.showMessage(_('Invalid selection'), 'error');
+                return;
+            }
+
             this.ajaxcall(this._actionUrl("actDeclareIntercept"), {
+                card_id: cardId,
+                zone: 'hand',
                 lock: true
             }, this, function(result) {
                 // Success handled by notification
+            }, function(is_error) {
+                console.error('Intercept declaration failed', is_error);
             });
         },
 
@@ -997,6 +1040,15 @@ function (dojo, declare) {
             if (args.card && args.card.id !== undefined && args.card.type !== undefined) {
                 this.playerDiscards[playerId].addToStockWithId(args.card.type, args.card.id);
             }
+        },
+
+        notif_alleyCatIneffective: async function( args )
+        {
+            console.log('notif_alleyCatIneffective', args);
+            const target = args && (args.target_name || args.target_id);
+            this.showMessage(dojo.string.substitute(_("Ineffective: ${target} reveals an Alley Cat (returns to hand)"), {
+                target: target || _('target')
+            }), 'info');
         },
 
         notif_cardRemoved: async function( args )

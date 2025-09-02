@@ -1,7 +1,7 @@
 Herding Cats — Catnip Test Plan
 
 Summary
-- Targeted hand steal. Reveal selected hand card; if it is Catnip, ineffective (defender keeps). Otherwise move revealed card into attacker’s herd-FD; only attacker sees its identity. Attacker’s played card also enters herd-FD as Catnip.
+- Targeted hand steal. Reveal selected hand card; if it is Catnip, ineffective (defender keeps). Otherwise move revealed card into attacker’s herd-FD; only attacker sees its identity. Attacker’s played card goes to herd-FD as Catnip unless ineffective-against-itself triggers or a Laser Pointer interception stands; in those cases, the attacker’s played card is discarded face-up (no herd placement).
 
 Preconditions
 - Players A (active) and B (defender) seated; B has ≥1 card in hand.
@@ -27,17 +27,17 @@ Case CN2 — Truthful, unchallenged, ineffective-against-itself
 1) As CN1, but reveal shows B’s card is Catnip.
 Expected:
 - Ineffective: B keeps the card (return to B’s hand).
-- A’s played card still enters A herd-FD as Catnip; A hand counter -1.
+- A’s played card is discarded face-up (thwarted); A hand counter -1.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 <a id="cn3"></a>
 Case CN3 — Truthful, challenged and challenge fails
-1) B (or others) challenge; truth stands.
-2) A picks blind penalty from each challenger’s hand; reveal + discard.
+1) B challenges; truth stands.
+2) A picks a blind penalty from B’s hand; reveal + discard.
 3) Proceed with CN1/CN2 resolution.
 Expected:
-- Each challenger hand counter -1; logs reflect penalties then effect.
+- Challenger hand counter -1; logs reflect penalty then effect (CN1 normal steal → A’s card to herd-FD; CN2 ineffective → A’s card discarded face-up).
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
@@ -48,7 +48,7 @@ Case CN4 — Bluff, unchallenged
 Expected:
 - If selected B card is Catnip: ineffective (return to hand).
 - Otherwise the revealed card moves to A herd-FD.
-- A’s played card enters A herd-FD as Catnip; no reveal of the played card.
+- A’s played card enters A herd-FD as Catnip for normal steal; if ineffective occurs (vs Catnip), A’s played card is discarded face-up (no herd placement).
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
@@ -66,7 +66,7 @@ Case CN6 — Defender intercepts with Laser Pointer from hand
 Expected:
 - Selected slot remains hidden; attack canceled.
 - B reveals LP and discards it face-up; B hand counter -1.
-- A’s played card still enters A herd-FD as Catnip.
+- A’s played card is discarded face-up (no herd placement).
 - Logs: LP interception and cancel.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
@@ -74,7 +74,7 @@ Cleanup:
 <a id="cn7"></a>
 Case CN7 — Interception claim challenged
 1) C challenges B’s LP claim.
-Expected (truthful LP): B discards LP; C discards blind penalty; no reveal of slot; A’s card to herd-FD.
+Expected (truthful LP): B discards LP; C discards blind penalty; no reveal of slot; A’s played card is discarded face-up (no herd placement).
 Expected (bluff LP): B takes penalty; CN proceeds (CN1/CN2) with reveal.
 Cleanup:
 - Express Stop the game before proceeding to any other case.

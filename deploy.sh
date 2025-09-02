@@ -5,6 +5,18 @@
 
 echo "🚀 Deploying files from src/ to BGA mount..."
 
+# First unmount if already mounted
+echo "🔄 Unmounting BGA if already mounted..."
+./unmount_bga.sh 2>/dev/null
+
+# Mount BGA
+echo "📁 Mounting BGA..."
+./mount_bga.sh
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Failed to mount BGA"
+    exit 1
+fi
+
 # Check if src directory exists and has files
 if [ ! -d src ] || [ -z "$(ls -A src 2>/dev/null)" ]; then
     echo "❌ Error: src/ directory not found or empty"
@@ -12,10 +24,9 @@ if [ ! -d src ] || [ -z "$(ls -A src 2>/dev/null)" ]; then
     exit 1
 fi
 
-# Check if mount exists
+# Check if mount exists (should be there after mounting)
 if [ ! -d ~/BGA_mount ]; then
-    echo "❌ Error: BGA mount not found at ~/BGA_mount"
-    echo "Please run ./mount_bga.sh first"
+    echo "❌ Error: BGA mount not found at ~/BGA_mount after mounting"
     exit 1
 fi
 

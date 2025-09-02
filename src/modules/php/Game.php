@@ -31,6 +31,8 @@ class Game extends \Bga\GameFramework\Table
     private const G_TARGET_ZONE = 'g_target_zone'; // 1 = hand, 2 = herd
     private const G_CHALLENGER = 'g_challenger';
     private const G_PENALTY_TO_RESOLVE = 'g_penalty_to_resolve';
+    // Flag set when a targeted effect resolves as "ineffective" (e.g., Alley Cat vs Alley Cat)
+    private const G_EFFECT_INEFFECTIVE = 'g_effect_ineffective';
 
     /**
      * Your global variables labels:
@@ -54,6 +56,7 @@ class Game extends \Bga\GameFramework\Table
             self::G_TARGET_ZONE => 14,
             self::G_CHALLENGER => 15,
             self::G_PENALTY_TO_RESOLVE => 16,
+            self::G_EFFECT_INEFFECTIVE => 18,
         ]);
 
         // Initialize BGA Deck component (safe even if no real cards are used)
@@ -476,11 +479,17 @@ class Game extends \Bga\GameFramework\Table
         $actor      = (int)$this->getGameStateValue(self::G_ACTOR);
         $challenger = (int)$this->getGameStateValue(self::G_CHALLENGER);
 
-        // Defensive guard: if challenger is unset, return minimal args to avoid 0-id lookups
+        // If there was no actual challenge but we have a pending effect penalty
+        // (e.g., Alley Cat after defender passes intercept), target the selected defender.
+        if ($challenger === 0 && (int)$this->getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1) {
+            $challenger = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        }
+
+        // Defensive guard: still unset → return minimal args (client will show a generic prompt)
         if ($challenger === 0) {
             return [
-                'actor_id'   => $actor,
-                'actor_name' => $this->getPlayerNameById($actor),
+                'actor_id'    => $actor,
+                'actor_name'  => $this->getPlayerNameById($actor),
                 'challengers' => [],
             ];
         }
@@ -548,6 +557,7 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateValue(self::G_TARGET_ZONE, 0);
         $this->setGameStateValue(self::G_CHALLENGER, 0);
         $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
+        $this->setGameStateValue(self::G_EFFECT_INEFFECTIVE, 0);
 
         // Branch: targeted cards select opponent first; others go straight to challenge window
         if ($this->requiresTarget($decl)) {
@@ -768,14 +778,19 @@ class Game extends \Bga\GameFramework\Table
         $targetPlayer = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
         $targetZone   = (int)$this->getGameStateValue(self::G_TARGET_ZONE); // 1=hand,2=herd
 
+        // If an effect was marked ineffective (e.g., Alley Cat vs Alley Cat), skip effect previews
+        $ineff = (int)$this->getGameStateValue(self::G_EFFECT_INEFFECTIVE) === 1;
+
         switch ($decl) {
             case 3: // Alley Cat
-                $this->notify->all('alleyCatEffect', clienttranslate('${player_name} forces a discard from ${target_name}\'s hand'), [
-                    'player_id'   => $actor,
-                    'player_name' => $this->getPlayerNameById($actor),
-                    'target_id'   => $targetPlayer,
-                    'target_name' => $this->getPlayerNameById($targetPlayer),
-                ]);
+                if (!$ineff) {
+                    $this->notify->all('alleyCatEffect', clienttranslate('${player_name} forces a discard from ${target_name}\'s hand'), [
+                        'player_id'   => $actor,
+                        'player_name' => $this->getPlayerNameById($actor),
+                        'target_id'   => $targetPlayer,
+                        'target_name' => $this->getPlayerNameById($targetPlayer),
+                    ]);
+                }
                 break;
             case 4: // Catnip
                 $this->notify->all('catnipEffect', clienttranslate('${player_name} steals a card from ${target_name}\'s hand to herd'), [
@@ -807,13 +822,23 @@ class Game extends \Bga\GameFramework\Table
         $actor = (int)$this->getGameStateValue(self::G_ACTOR);
         $card  = (int)$this->getGameStateValue(self::G_PENDING_CARD);
         $decl  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        $actual = (int)$this->getGameStateValue(self::G_PENDING_ACTUAL);
+        $ineff  = (int)$this->getGameStateValue(self::G_EFFECT_INEFFECTIVE) === 1;
 
-        $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
-            'player_id' => $actor,
-            'player_name' => $this->getPlayerNameById($actor),
-            'card' => [ 'id' => $card, 'type' => $decl ],
-            'visible' => false,
-        ]);
+        if ($ineff) {
+            // Ineffective vs itself: discard the played card face-up instead of adding to herd
+            $this->notify->all('discardUpdate', '', [
+                'player_id' => $actor,
+                'card' => [ 'id' => $card, 'type' => $actual ],
+            ]);
+        } else {
+            $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
+                'player_id' => $actor,
+                'player_name' => $this->getPlayerNameById($actor),
+                'card' => [ 'id' => $card, 'type' => $decl ],
+                'visible' => false,
+            ]);
+        }
 
         $this->gamestate->nextState('cardAdded');
     }
@@ -834,6 +859,34 @@ class Game extends \Bga\GameFramework\Table
         $picked = $hand[$card_index - 1];
         $card_id = (int)$picked['id'];
         $card_type = isset($picked['type']) ? (int)$picked['type'] : 0;
+
+        // Special-case: Alley Cat ineffective-vs-same-identity rule
+        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        // Detect Alley Cat main-effect selection (not a challenge penalty):
+        // either flagged via G_PENALTY_TO_RESOLVE or implied by having no challenger
+        $isAlleyEffect = ($decl === 3) && (
+            ((int)$this->getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1)
+            || ((int)$this->getGameStateValue(self::G_CHALLENGER) === 0)
+        );
+
+        if ($isAlleyEffect && $card_type === 3) {
+            // Ineffective: reveal matches Alley Cat → return to hand, no discard
+            $this->notify->all('alleyCatIneffective', clienttranslate('Ineffective: ${target_name}\'s card is Alley Cat and returns to hand'), [
+                'player_id'   => $actor,
+                'player_name' => $this->getPlayerNameById($actor),
+                'target_id'   => $player_id,
+                'target_name' => $this->getPlayerNameById($player_id),
+                'card'        => [ 'id' => $card_id, 'type' => $card_type ],
+            ]);
+            // Track stat for actor
+            $this->incStat(1, 'ineffective_attacks_due_to_matching', $actor);
+
+            // Proceed to main resolution without changing defender hand
+            $this->setGameStateValue(self::G_EFFECT_INEFFECTIVE, 1);
+            $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
+            $this->gamestate->nextState('toResolve');
+            return;
+        }
 
         // If a real deck exists, move the card to discard; otherwise simulate with notifications
         if (!empty($realAssoc) && is_object($this->cards)) {
@@ -863,17 +916,29 @@ class Game extends \Bga\GameFramework\Table
         }
 
         // Log and state progression
-        $this->notify->all('truthPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
-            'player_id'   => $actor,
-            'player_name' => $this->getPlayerNameById($actor),
-            'target_id'   => $player_id,
-            'target_name' => $this->getPlayerNameById($player_id),
-            'card_index'  => $card_index,
-        ]);
+        // For unchallenged Alley Cat effect selection, do not emit a "truthPenaltyApplied" log
+        // to avoid confusing test flows and reviewers. Keep it for truthful-challenge penalties only.
+        $declNow = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        $isAlleyEffectLog = ($declNow === 3) && (
+            ((int)$this->getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1)
+            || ((int)$this->getGameStateValue(self::G_CHALLENGER) === 0)
+        );
+        if (!$isAlleyEffectLog) {
+            $this->notify->all('truthPenaltyApplied', clienttranslate('${player_name} selects a penalty card from ${target_name}'), [
+                'player_id'   => $actor,
+                'player_name' => $this->getPlayerNameById($actor),
+                'target_id'   => $player_id,
+                'target_name' => $this->getPlayerNameById($player_id),
+                'card_index'  => $card_index,
+            ]);
+        }
+        if ($isAlleyEffect) {
+            // Count as Alley Cat forced discard for the victim
+            $this->incStat(1, 'cards_discarded_by_alley_cat', $player_id);
+        }
 
         // Route depending on whether the declared card requires targeting
-        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
-        if ((int)$this->getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1) {
+        if ($isAlleyEffect) {
             $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
             $this->gamestate->nextState('toResolve');
             return;
@@ -999,18 +1064,44 @@ class Game extends \Bga\GameFramework\Table
         ];
     }
 
-    public function actSelectTargetSlot(int $slot_id, string $zone): void
+    public function actSelectTargetSlot(int $id, string $zone): void
     {
         $this->checkAction('actSelectTargetSlot');
         $active = (int)$this->getActivePlayerId();
-        $this->setGameStateValue(self::G_TARGET_PLAYER, $slot_id);
+
+        // Only allow selecting a target during the selectTarget state.
+        $state = $this->gamestate->state();
+        $stateName = is_array($state) && isset($state['name']) ? $state['name'] : '';
+        if ($stateName !== 'selectTarget') {
+            throw new \BgaUserException(self::_("Invalid timing for target selection."));
+        }
+
+        // Validate that provided id corresponds to a seated player (defender), not a slot index.
+        $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+        $validIds = array_map(function($p){ return (int)$p['id']; }, array_values($players));
+        if (!in_array((int)$id, $validIds, true)) {
+            throw new \BgaUserException(self::_("Invalid target player."));
+        }
+
+        // Validate zone is consistent with the declared card type
+        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        $zone = ($zone === 'herd') ? 'herd' : 'hand';
+        if (in_array($decl, [3,4], true) && $zone !== 'hand') {
+            throw new \BgaUserException(self::_("Invalid target zone for this card."));
+        }
+        if ($decl === 5 && $zone !== 'herd') {
+            throw new \BgaUserException(self::_("Invalid target zone for this card."));
+        }
+
+        // Persist target (player + zone)
+        $this->setGameStateValue(self::G_TARGET_PLAYER, (int)$id);
         $this->setGameStateValue(self::G_TARGET_ZONE, $this->zoneCodeFromString($zone));
 
-        // Notify minimal selection (optional)
+        // Notify selection
         $this->notify->all('targetSelected', clienttranslate('${player_name} selected a target'), [
             'player_id' => $active,
             'player_name' => $this->getPlayerNameById($active),
-            'target_player_id' => $slot_id,
+            'target_player_id' => (int)$id,
             'target_zone' => $zone,
         ]);
 
@@ -1042,6 +1133,7 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateValue(self::G_TARGET_ZONE, 0);
         $this->setGameStateValue(self::G_CHALLENGER, 0);
         $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
+        $this->setGameStateValue(self::G_EFFECT_INEFFECTIVE, 0);
 
         // Now advance to the next player in turn order
         $this->activeNextPlayer();
@@ -1081,9 +1173,10 @@ class Game extends \Bga\GameFramework\Table
         // If Alley Cat was declared, attacker chooses a blind card from target's hand
         $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
         if ($decl === 3) { // Alley Cat
+            // Flag main-effect selection flow (not a challenge penalty)
             $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 1);
-            // Switch active player in a dedicated GAME state (safe in engine)
-            $this->gamestate->nextState('noInterceptPenalty');
+            // Route through a GAME state to safely switch active player, then enter effect selection
+            $this->gamestate->nextState('prepareEffect');
             return;
         }
         $this->gamestate->nextState('noIntercept');
@@ -1093,14 +1186,81 @@ class Game extends \Bga\GameFramework\Table
     {
         $actor = (int)$this->getGameStateValue(self::G_ACTOR);
         $this->gamestate->changeActivePlayer($actor);
+        // If this was flagged as an Alley Cat main effect (unchallenged), route to the
+        // dedicated effect selection state instead of the truthful penalty state.
+        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+        if ($decl === 3 && (int)$this->getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1) {
+            $this->gamestate->nextState('toEffectSelect');
+            return;
+        }
         $this->gamestate->nextState('toPenalty');
     }
 
-    public function actDeclareIntercept(): void
+    public function actDeclareIntercept(int $card_id, string $zone): void
     {
         $this->checkAction('actDeclareIntercept');
-        // For now, just proceed to intercept challenge window without card verification
-        $this->gamestate->nextState('interceptDeclared');
+
+        // Normalize zone
+        $zone = ($zone === 'herd') ? 'herd' : 'hand';
+
+        // Defender is the current active player at this state
+        $defender = (int)$this->getActivePlayerId();
+
+        // Validate selected card from dummy/real hand and ensure it's a Laser Pointer (type 6)
+        $hand = $this->getHandList($defender);
+        $foundIdx = null;
+        $foundType = 0;
+        foreach ($hand as $i => $c) {
+            if ((int)$c['id'] === (int)$card_id) {
+                $foundIdx = $i;
+                $foundType = isset($c['type']) ? (int)$c['type'] : 0;
+                break;
+            }
+        }
+        if ($foundIdx === null) {
+            throw new \BgaUserException(self::_("Selected card not found in hand"));
+        }
+        if ($zone !== 'hand') {
+            throw new \BgaUserException(self::_("Only hand intercept is supported"));
+        }
+        if ($foundType !== 6) {
+            throw new \BgaUserException(self::_("Selected card is not a Laser Pointer"));
+        }
+
+        // Discard the defender's Laser Pointer (simulate without real deck)
+        $this->notify->all('cardRemoved', '', [
+            'player_id' => $defender,
+            'card_id'   => $card_id,
+            'from_zone' => 'hand',
+        ]);
+        $this->notify->all('discardUpdate', '', [
+            'player_id' => $defender,
+            'card' => [ 'id' => $card_id, 'type' => 6 ],
+        ]);
+        // Persist/notify hand count decrement for defender
+        $counts = $this->adjustHandCount($defender, -1);
+        $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+
+        // Update stored hand order list (dummy mode)
+        $list = $this->getHandList($defender);
+        if ($foundIdx !== null) {
+            array_splice($list, $foundIdx, 1);
+            $this->setHandList($defender, $list);
+        }
+
+        // Cancel the attack: move the played card from limbo to attacker's discard (face-up)
+        $actor  = (int)$this->getGameStateValue(self::G_ACTOR);
+        $pCard  = (int)$this->getGameStateValue(self::G_PENDING_CARD);
+        $pType  = (int)$this->getGameStateValue(self::G_PENDING_ACTUAL);
+        if ($pCard > 0) {
+            $this->notify->all('discardUpdate', '', [
+                'player_id' => $actor,
+                'card' => [ 'id' => $pCard, 'type' => $pType ],
+            ]);
+        }
+
+        // End the turn immediately (no herd placement, no further effect)
+        $this->gamestate->nextState('cancelled');
     }
 
     public function actChallengeIntercept(): void
@@ -1160,6 +1320,7 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateInitialValue(self::G_ACTOR, 0);
         $this->setGameStateInitialValue(self::G_TARGET_PLAYER, 0);
         $this->setGameStateInitialValue(self::G_TARGET_ZONE, 0);
+        $this->setGameStateInitialValue(self::G_EFFECT_INEFFECTIVE, 0);
 
         // Init game statistics.
         //

@@ -133,7 +133,11 @@ class action_herdingcats extends APP_GameAction
     {
         self::setAjaxMode();
         
-        $card_index = self::getArg("card_index", AT_posint, true);
+        // Accept both 1-based card_index and legacy slot_index
+        $card_index = self::getArg("card_index", AT_posint, false);
+        if ($card_index === null) {
+            $card_index = self::getArg("slot_index", AT_posint, true);
+        }
         
         // Check action is valid
         $this->game->checkAction('actSelectBlindFromActor');
@@ -154,7 +158,11 @@ class action_herdingcats extends APP_GameAction
         self::setAjaxMode();
         
         $player_id = self::getArg("player_id", AT_posint, true);
-        $card_index = self::getArg("card_index", AT_posint, true);
+        // Accept both 1-based card_index and legacy slot_index
+        $card_index = self::getArg("card_index", AT_posint, false);
+        if ($card_index === null) {
+            $card_index = self::getArg("slot_index", AT_posint, true);
+        }
         
         // Check action is valid
         $this->game->checkAction('actSelectBlindFromChallenger');
@@ -169,23 +177,33 @@ class action_herdingcats extends APP_GameAction
     //////////// 
 
     /**
-     * Player selects a specific target slot for their targeting effect
-     * 
-     * @param int $slot_index - Index of the target slot (0-based)
+     * Player selects the specific target for their targeting effect.
+     * For legacy compatibility, accepts either `player_id` (preferred) or `slot_index` (older clients).
+     * The server validates timing and treats the numeric value strictly as a player id during selectTarget.
+     *
+     * @param int $player_id - Target player id (preferred)
+     * @param int $slot_index - Legacy numeric param (treated as player id in selectTarget)
      * @param string $zone - Target zone ("hand" or "herd")
      */
     public function actSelectTargetSlot()
     {
         self::setAjaxMode();
-        
-        $slot_index = self::getArg("slot_index", AT_posint, true);
+
+        // Accept both player_id and legacy slot_index; prefer player_id when provided
+        $player_id = self::getArg("player_id", AT_posint, false);
+        $slot_index = self::getArg("slot_index", AT_posint, false);
         $zone = self::getArg("zone", AT_alphanum, true);
-        
+
+        $id = $player_id ? $player_id : $slot_index;
+        if (!$id) {
+            throw new BgaUserException("Missing target identifier");
+        }
+
         // Check action is valid
         $this->game->checkAction('actSelectTargetSlot');
-        
-        $this->game->actSelectTargetSlot($slot_index, $zone);
-        
+
+        $this->game->actSelectTargetSlot($id, $zone);
+
         self::ajaxResponse();
     }
 
