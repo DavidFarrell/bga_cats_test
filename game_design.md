@@ -90,20 +90,27 @@ This rule covers:
 
 5.2 Laser Pointer interception
 
-Laser Pointer can intercept attacks that target you:
-	•	If your herd is targeted (Animal Control), you may discard a Laser Pointer from your herd instead. This cancels the attack’s removal. The selected herd card stays hidden and untouched. Discarded Laser Pointer goes face-up to your discard pile.
-	•	If your hand is targeted (Alley Cat or Catnip), you may discard a Laser Pointer from your hand instead. The attacker does not see or take any card from your hand.
+Laser Pointer can intercept targeted attacks as a substitution, not a cancel. The attack still “resolves”, but the thing removed/ stolen is replaced by a Laser Pointer supplied by the defender.
 
-Bluffing a Laser Pointer: claiming to intercept with Laser Pointer when you do not have one is challengeable like any other claim.
-	•	If you are challenged and you do have Laser Pointer in the stated zone, the challenger discards a blind card, and your interception stands.
-	•	If you are challenged and you lied, you must discard the card you falsely presented as Laser Pointer, discard an additional blind card chosen by the challenger, and the original attack resumes as if no interception was attempted.
+Where the substitution comes from:
+	•	If your herd is targeted (Animal Control): discard a Laser Pointer from your herd face-up instead of losing the selected herd card. The selected herd card remains hidden and untouched.
+	•	If your hand is targeted (Alley Cat or Catnip): present a Laser Pointer from your hand instead of the selected hand card. The selected hand card remains hidden and untouched.
+
+Outcome by attacking effect when the LP claim stands (truthful, or bluff that is not overturned):
+	•	Alley Cat (discard-from-hand): defender discards Laser Pointer from hand face-up; attacker’s played Alley Cat proceeds normally and enters attacker’s herd face-down. The originally selected hand card is not revealed.
+	•	Catnip (steal-from-hand): attacker steals the defender’s Laser Pointer into attacker’s herd face-down; attacker’s played Catnip also enters attacker’s herd face-down. The originally selected hand card is not revealed (only attacker can see the identity of the stolen LP in their herd).
+	•	Animal Control (remove-from-herd): defender discards a Laser Pointer from their herd face-up instead of the selected herd card; attacker’s played Animal Control enters attacker’s herd face-down. The originally selected herd card remains hidden.
+
+Bluffing a Laser Pointer: claiming to intercept with Laser Pointer when you do not have one is challengeable (single-challenger, first-come) like any other claim.
+	•	If your claim is challenged and you do have the Laser Pointer in the stated zone, reveal as needed, discard/transfer per above, the challenger discards a blind penalty, and the substitution stands.
+	•	If your claim is challenged and you lied, you discard the falsely presented card face-up, and the original attack proceeds normally (reveal selected card and apply ineffective-against-itself if applicable). No additional blind/random penalty is applied beyond discarding the presented bluff card.
 
 Timing:
-	•	For hand-targeting effects, the attacker selects a hidden slot. Before the selected card is revealed, the defender gets a window to declare a Laser Pointer interception.
-	•	For herd-targeting effects, before the selected herd card is revealed, the defender may declare a Laser Pointer interception.
+	•	For hand-targeting effects, the attacker selects a hidden slot. Before the selected card is revealed, the defender gets a window to declare a Laser Pointer interception from hand.
+	•	For herd-targeting effects, after the attacker selects a face-down herd card and before it is revealed, the defender may declare a Laser Pointer interception from herd.
 
 Result for attacker’s played card:
-	•	If an attack is neutralised by a successful Laser Pointer interception (whether the LP claim was truthful or an unchallenged/failed-challenge bluff), the attacker’s played card is discarded face-up. The action was thwarted; no herd placement occurs.
+	•	When a Laser Pointer interception stands, the attacker’s played card resolves and enters the attacker’s herd face-down as the declared identity (i.e., it is not discarded). The only cases where the attacker’s played card is discarded face-up are (a) ineffective-against-itself triggers, or (b) the attacker’s declaration was successfully challenged.
 
 ⸻
 
@@ -136,7 +143,7 @@ All cards are played by declaration. The physical card used becomes the declared
 	•	Value in herd: 0.
 	•	Target: none on play.
 	•	Effect on play: place to your herd face-down.
-	•	Special: may be discarded from your herd to intercept herd-targeting effects against you, or from your hand to intercept hand-targeting effects against you, as per section 5.2. When a Laser Pointer interception stands (truthful or bluff that is not overturned), the attacker’s played card is discarded face-up.
+	•	Special: may be discarded from your herd to intercept herd-targeting effects against you, or from your hand to intercept hand-targeting effects against you, as per section 5.2. Interception replaces the selected card (substitution) and the attacker’s played card still enters their herd face-down.
 	6.	Show Cat
 	•	Value in herd: 5, or 7 if you have at least one Kitten in your herd at scoring.
 	•	Target: none.
@@ -149,8 +156,8 @@ All cards are played by declaration. The physical card used becomes the declared
 	•	Face-up herd cards are protected: they cannot be selected by Animal Control or Catnip. They are still counted for scoring. You may still voluntarily discard a Laser Pointer from your herd to intercept, even if that Laser Pointer is face-up.
 	•	Selecting hidden cards (hand or face-down herd):
 	•	The chooser selects a hidden slot. The engine reveals it as required by the effect.
-•	If a Laser Pointer interception is declared and stands, the selected card is not revealed.
-•	If a Laser Pointer interception stands (truthful or bluff not overturned), the attacker’s played card is discarded face-up instead of entering the herd.
+•	If a Laser Pointer interception is declared and stands, the originally selected card is not revealed (remains hidden and untouched).
+•	If a Laser Pointer interception stands, resolve by substitution per §5.2; the attacker’s played card still enters their herd face-down (no discard due to intercept).
 	•	Played card identity:
 	•	If the play succeeds past challenges, the played card’s identity becomes the declared identity when added to the herd.
 	•	If ineffective-against-itself triggers (section 5.1), the attacker’s played card is considered thwarted and is discarded face-up instead of entering the herd.
@@ -189,11 +196,12 @@ For targeted effects (Alley Cat, Catnip, Animal Control):
 	•	Defender’s intercept window:
 	•	If hand was targeted, defender may declare Laser Pointer from hand.
 	•	If herd was targeted, defender may declare Laser Pointer from herd.
-	•	Laser Pointer declaration itself can be challenged. Resolve that challenge before the attack proceeds.
-	•	If no interception or interception failed:
-	•	Reveal the selected card and check ineffective-against-itself.
-	•	Apply effect accordingly.
-		•	Attacker’s played card goes to herd face-down, unless (a) ineffective-against-itself triggered, or (b) a Laser Pointer interception stands; in those cases, discard it face-up.
+		•	Laser Pointer declaration itself can be challenged (single challenger, first-come). Resolve that challenge before the attack proceeds.
+		•	If a Laser Pointer interception stands, resolve by substitution per §5.2 without revealing the selected card.
+		•	If no interception or the interception failed:
+		•	Reveal the selected card and check ineffective-against-itself.
+		•	Apply effect accordingly.
+			•	Attacker’s played card goes to herd face-down, unless ineffective-against-itself triggered or the declaration was successfully challenged.
 
 For non-targeting effects (Kitten, Laser Pointer, Show Cat):
 	1.	Attacker declares identity.
@@ -235,7 +243,8 @@ For non-targeting effects (Kitten, Laser Pointer, Show Cat):
 11) UI behaviour guidelines
 	•	Hidden slot selection should preserve hand order. Show back-of-card placeholders in a fixed order so the chooser selects a position, not a random card.
 	•	When ineffective-against-itself triggers against a hand card, show the reveal and return animation so players understand why nothing was lost.
-	•	When Laser Pointer intercepts, show a clear cancel animation and move Laser Pointer to discard. Do not reveal the originally selected target card.
+	•	When Laser Pointer intercepts (substitution), show a clear substitution animation, move/discard the Laser Pointer per §5.2, and do not reveal the originally selected card.
+	•	Defender-only prompt on intercept window: display “Attacker selected Card N, <type>” and pulse-highlight that slot. Only the defender sees the type (they already know their own hand/herd identities); other players see that a slot was selected but not its identity.
 	•	Provide a challenge prompt with a short timer or require all players to click Pass or Challenge to progress, depending on your desired pacing.
 	•	Always log a compact event history: declarations, challenges, results, selected slots, reveals, interceptions, discards, and cards added to herd.
 
@@ -253,17 +262,17 @@ B) Animal Control vs defender’s Animal Control in herd
 		•	Alice selects a face-down herd card. Reveal shows Animal Control. Ineffective. That card flips face-up and stays protected. Alice’s played Animal Control is discarded face-up (thwarted).
 
 
-C) Catnip intercepted by Laser Pointer in hand
+C) Catnip intercepted by Laser Pointer from hand (substitution)
 	•	Alice declares Catnip on Bob. No challenge.
-	•	Alice selects slot 4 from Bob’s hand.
-	•	Bob declares Laser Pointer from hand. Dave challenges Bob’s claim. Bob reveals a Laser Pointer from hand and discards it. Dave discards a blind card.
-		•	Catnip is neutralised. Alice’s played Catnip is discarded face-up (no herd placement).
+	•	Alice selects Card 4 from Bob’s hand (defender-only prompt shows “Card 4, <type>”).
+	•	Bob declares Laser Pointer from hand. Dave challenges Bob’s claim. Bob reveals a Laser Pointer from hand; challenge fails. Dave discards a blind card.
+		•	Substitution: Alice steals the Laser Pointer to her herd face-down. Alice’s played Catnip also enters her herd face-down. The originally selected card remains hidden.
 
-D) Animal Control intercepted by Laser Pointer in herd
+D) Animal Control intercepted by Laser Pointer from herd (substitution)
 		•	Alice declares Animal Control on Bob. No challenge.
-		•	Alice selects a face-down herd card.
+		•	Alice selects a face-down herd card (defender-only prompt shows “Card N, <type>”).
 		•	Bob discards a Laser Pointer from his herd to intercept. No reveal of the selected herd card.
-		•	The attack is neutralised. Alice’s played Animal Control is discarded face-up (no herd placement).
+		•	Substitution: Bob’s Laser Pointer is discarded face-up instead of the selected herd card. Alice’s played Animal Control enters her herd face-down.
 
 ⸻
 
@@ -276,9 +285,12 @@ Hand: 0 cards = +0. Total = 7.
 ⸻
 
 14) Assumptions made explicit
-	•	If an attack is neutralised by a successful Laser Pointer interception, the attacker’s played card is discarded face-up (no herd placement).
+	•	If an attack is neutralised by a successful Laser Pointer interception, the attacker’s played card still enters the attacker’s herd face-down as the declared identity (substitution model; no discard due to intercept).
 	•	Challenges are first-come, first-served; only the first challenger participates in resolution.
 	•	Face-up herd cards are protected from being selected by Animal Control or Catnip, but a face-up Laser Pointer in your herd may still be voluntarily discarded to intercept.
 	•	End condition is checked at the end of each turn. If any player has zero cards in hand at that moment, the game ends and you score.
+
+Additional clarity for intercept bluff resolution:
+	•	When a Laser Pointer intercept claim is challenged and found to be a bluff, the defender discards the presented bluff card face-up and the original attack proceeds (reveal and resolve the originally selected card). No extra blind/random penalty is applied beyond discarding the presented bluff card.
 
 If you want any of these toggled, say which rule to flip and I will adjust the spec cleanly.

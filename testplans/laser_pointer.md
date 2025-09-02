@@ -34,32 +34,43 @@ Cleanup:
 
 Interception From Hand (vs. Alley Cat/Catnip)
 <a id="lp4"></a>
-Case LP4 — Hand intercept, unchallenged
+Case LP4 — Hand intercept, unchallenged (substitution)
 1) B is targeted in hand (AC/CN); after slot selection, B declares LP from hand.
-Expected: Selected slot remains hidden; attack canceled; B discards LP face-up; A’s played card is discarded face-up (no herd placement); logs reflect cancel.
+Expected:
+- Selected slot remains hidden; substitution applies.
+- Alley Cat: B discards LP face-up; A’s Alley Cat still enters A herd-FD.
+- Catnip: LP is stolen to A herd-FD; A’s Catnip also enters A herd-FD.
+- Defender-only prompt shows “Attacker selected Card N, <type>” with a pulse-highlight on that slot.
+- Logs reflect interception and substitution.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 <a id="lp5"></a>
 Case LP5 — Hand intercept claim challenged
 1) C challenges B’s LP-from-hand.
-Expected (truthful): B reveals/discards LP; C discards blind penalty; cancel stands; selected slot stays hidden; A’s played card is discarded face-up.
+Expected (truthful):
+- B reveals LP (to engine) and substitution stands; C discards blind penalty; selected slot stays hidden.
+- Alley Cat: B discards LP face-up; A’s Alley Cat enters A herd-FD.
+- Catnip: LP is stolen to A herd-FD; A’s Catnip also enters A herd-FD.
 Expected (bluff): B takes penalty; original attack proceeds; selected slot is revealed and resolved.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 Interception From Herd (vs. Animal Control)
 <a id="lp6"></a>
-Case LP6 — Herd intercept, unchallenged
+Case LP6 — Herd intercept, unchallenged (substitution)
 1) B is targeted in herd; after FD slot selection, B declares LP from herd.
-Expected: Selected herd card remains hidden; attack canceled; B discards LP face-up from herd; A’s played card is discarded face-up (no herd placement).
+Expected:
+- Selected herd card remains hidden; substitution applies.
+- B discards LP face-up from herd; A’s Animal Control still enters A herd-FD.
+- Defender-only prompt shows “Attacker selected Card N, <type>” with a pulse-highlight on that slot.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 <a id="lp7"></a>
 Case LP7 — Herd intercept claim challenged
 1) C challenges B’s LP-from-herd.
-Expected (truthful): B discards LP; C discards blind penalty; cancel stands; selected card stays hidden; A’s played card is discarded face-up.
+Expected (truthful): B discards LP; C discards blind penalty; substitution stands; selected card stays hidden; A’s Animal Control enters A herd-FD.
 Expected (bluff): B takes penalty; original AN proceeds revealing selected herd card.
 Cleanup:
 - Express Stop the game before proceeding to any other case.

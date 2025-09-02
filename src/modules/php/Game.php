@@ -33,6 +33,12 @@ class Game extends \Bga\GameFramework\Table
     private const G_PENALTY_TO_RESOLVE = 'g_penalty_to_resolve';
     // Flag set when a targeted effect resolves as "ineffective" (e.g., Alley Cat vs Alley Cat)
     private const G_EFFECT_INEFFECTIVE = 'g_effect_ineffective';
+    // Intercept globals
+    private const G_INTERCEPT_BY = 'g_intercept_by';
+    private const G_INTERCEPT_ZONE = 'g_intercept_zone'; // 1 = hand, 2 = herd, 0 = none
+    private const G_INTERCEPT_CARD = 'g_intercept_card'; // card id used for intercept (may be dummy when no real deck)
+    // Effect selected slot index (1-based) within the defender's hand/herd for resolution
+    private const G_SELECTED_SLOT_INDEX = 'g_selected_slot_index';
 
     /**
      * Your global variables labels:
@@ -57,6 +63,10 @@ class Game extends \Bga\GameFramework\Table
             self::G_CHALLENGER => 15,
             self::G_PENALTY_TO_RESOLVE => 16,
             self::G_EFFECT_INEFFECTIVE => 18,
+            self::G_INTERCEPT_BY => 19,
+            self::G_INTERCEPT_ZONE => 20,
+            self::G_INTERCEPT_CARD => 21,
+            self::G_SELECTED_SLOT_INDEX => 22,
         ]);
 
         // Initialize BGA Deck component (safe even if no real cards are used)
@@ -633,6 +643,70 @@ class Game extends \Bga\GameFramework\Table
         return $zone === 'herd' ? 2 : 1; // default to hand=1
     }
 
+    private function applyInterceptSubstitution(string $zone, int $defender, int $lpCardId): void
+    {
+        $actor = (int)$this->getGameStateValue(self::G_ACTOR);
+        $decl  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
+
+        // Emit interceptApplied summary (no sensitive info)
+        $this->notify->all('interceptApplied', '', [
+            'effect_type' => $decl,
+            'mode' => 'substitution',
+            'zone' => $zone,
+            'actor_id' => $actor,
+            'defender_id' => $defender,
+        ]);
+
+        if ($decl === 3) {
+            // Alley Cat: defender discards from hand; played Alley Cat goes to herd in stAddPlayedCardToHerd
+            // Show the actual card type that was presented (even if bluffing), per current UX requirement.
+            if ($zone === 'hand') {
+                // Find actual type of the presented card id (fallback to LP if not found)
+                $dtype = 6;
+                $list = $this->getHandList($defender);
+                foreach ($list as $i => $c) {
+                    if ((int)$c['id'] === $lpCardId) {
+                        $dtype = (int)($c['type'] ?? 6);
+                        break;
+                    }
+                }
+                $this->notify->all('cardRemoved', '', [ 'player_id' => $defender, 'card_id' => $lpCardId, 'from_zone' => 'hand' ]);
+                $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $lpCardId, 'type' => $dtype ] ]);
+                $counts = $this->adjustHandCount($defender, -1);
+                $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+                // Remove from dummy hand list if present
+                foreach ($list as $i => $c) { if ((int)$c['id'] === $lpCardId) { array_splice($list, $i, 1); break; } }
+                $this->setHandList($defender, $list);
+            }
+        } elseif ($decl === 4) {
+            // Catnip: move defender LP from hand to actor's herd-FD; no discardUpdate
+            if ($zone === 'hand') {
+                $this->notify->all('cardRemoved', '', [ 'player_id' => $defender, 'card_id' => $lpCardId, 'from_zone' => 'hand' ]);
+                $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
+                    'player_id' => $actor,
+                    'player_name' => $this->getPlayerNameById($actor),
+                    'card' => [ 'id' => $lpCardId, 'type' => 6 ],
+                    'visible' => false,
+                ]);
+                $counts = $this->adjustHandCount($defender, -1);
+                $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+                $list = $this->getHandList($defender);
+                foreach ($list as $i => $c) { if ((int)$c['id'] === $lpCardId) { array_splice($list, $i, 1); break; } }
+                $this->setHandList($defender, $list);
+            }
+        } elseif ($decl === 5) {
+            // Animal Control: discard defender LP from herd
+            if ($zone === 'herd') {
+                $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $lpCardId, 'type' => 6 ] ]);
+            }
+        }
+
+        // Clear intercept globals (slot remains hidden; no reveal)
+        $this->setGameStateValue(self::G_INTERCEPT_BY, 0);
+        $this->setGameStateValue(self::G_INTERCEPT_ZONE, 0);
+        $this->setGameStateValue(self::G_INTERCEPT_CARD, 0);
+    }
+
     public function stEnterSelectTarget(): void
     {
         $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
@@ -659,8 +733,8 @@ class Game extends \Bga\GameFramework\Table
             if ($this->requiresTarget($declared)) {
                 $currentTarget = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
                 if ($currentTarget !== 0) {
-                    // Defender should decide to intercept; make them active
-                    $this->gamestate->changeActivePlayer($currentTarget);
+                    // Proceed to effect slot selection (attacker chooses slot), then interceptor may react
+                    $this->gamestate->changeActivePlayer($actor);
                     $this->gamestate->nextState('goToIntercept');
                 } else {
                     $this->gamestate->nextState('goToTarget');
@@ -700,86 +774,112 @@ class Game extends \Bga\GameFramework\Table
 
     public function stResolveInterceptChallenge(): void
     {
-        $p = $this->pullPending();
-        $defender = intval($p['intercept_by_player_id']);
-        $zone = intval($p['intercept_zone']);
-        $card = $this->cards->getCard(intval($p['intercept_card_id']));
-        $challengers = $this->csvToIds($p['intercept_challengers_csv']);
+        $defender = (int)$this->getGameStateValue(self::G_INTERCEPT_BY);
+        $zoneCode = (int)$this->getGameStateValue(self::G_INTERCEPT_ZONE); // 1=hand,2=herd
+        $zone = $zoneCode === 2 ? 'herd' : 'hand';
+        $cardId = (int)$this->getGameStateValue(self::G_INTERCEPT_CARD);
+        $challenger = (int)$this->getGameStateValue(self::G_CHALLENGER); // single challenger model
 
-        // Truth test
-        $truth = false;
-        if ($zone === HC_TZ_HAND) {
-            $truth = ($card['location'] === 'hand' && intval($card['location_arg']) === $defender && intval($card['type_arg']) === HC_TYPE_LASERPOINTER);
-        } else {
-            $truth = (in_array($card['location'], ['herd','herd_faceup']) && intval($card['location_arg']) === $defender && intval($card['type']) === HC_TYPE_LASERPOINTER);
+        // Determine truth: for hand zone, check the presented card type; for herd, accept truthful in dummy mode
+        $truth = true;
+        if ($zone === 'hand') {
+            $truth = false;
+            $hand = $this->getHandList($defender);
+            foreach ($hand as $c) {
+                if ((int)$c['id'] === $cardId) { $truth = ((int)($c['type'] ?? 0) === 6); break; }
+            }
         }
-
-        if (count($challengers) === 0) {
-            // Nobody challenged: treat as truthful
+        if ($challenger === 0) {
+            // No challengers → treat as truthful
             $truth = true;
         }
 
-        if ($truth) {
-            // Discard the selected card face-up
-            $this->cards->moveCard($card['id'], 'discard', $defender);
-            $this->notify->all('discardPublic', clienttranslate('${player_name} discards a Laser Pointer to intercept'), [
-                'player_id' => $defender,
-                'player_name' => $this->getPlayerNameById($defender),
-                'card' => $card
+        // Publish a compact result notification for logs/tests (only when a challenge actually occurred)
+        if ($challenger !== 0) {
+            $this->notify->all('interceptChallengeResult', '', [
+                'defender_id'        => $defender,
+                'challenger_id'      => $challenger,
+                'zone'               => $zone,
+                'presented_card_id'  => $cardId,
+                'was_bluffing'       => !$truth,
             ]);
-            $this->incStat(1, 'laserIntercepts', $defender);
+        }
 
-            // Each challenger discards a blind card selected by defender
-            foreach ($challengers as $cid) {
-                // Choose randomly for now in this automatic resolution state.
-                // Follow-up: You can add an extra state if you want the defender to pick specific slots one by one.
-                $hand = array_values($this->cards->getCardsInLocation('hand', $cid));
-                if (count($hand) > 0) {
-                    $pick = $hand[bga_rand(0, count($hand)-1)];
-                    $this->cards->moveCard($pick['id'], 'discard', $cid);
-                    $this->notify->all('discardPublic', clienttranslate('${victim} discards a blind card due to intercept'), [
-                        'victim' => $this->getPlayerNameById($cid),
-                        'card' => $pick
-                    ]);
+        if ($truth) {
+            // Apply substitution outcome and (optional) challenger penalty
+            if ($challenger !== 0) {
+                // Challenger discards a blind card (random in dummy mode)
+                $victim = $challenger;
+                $vhand = $this->getHandList($victim);
+                if (count($vhand) > 0) {
+                    $pick = $vhand[bga_rand(0, count($vhand) - 1)];
+                    $vid = (int)$pick['id'];
+                    $vtype = (int)($pick['type'] ?? 0);
+                    $this->notify->all('cardRemoved', '', [ 'player_id' => $victim, 'card_id' => $vid, 'from_zone' => 'hand' ]);
+                    $this->notify->all('discardUpdate', '', [ 'player_id' => $victim, 'card' => [ 'id' => $vid, 'type' => $vtype ] ]);
+                    $counts = $this->adjustHandCount($victim, -1);
+                    $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+                    // Update dummy order
+                    $list = $this->getHandList($victim);
+                    foreach ($list as $i => $c) { if ((int)$c['id'] === $vid) { array_splice($list, $i, 1); break; } }
+                    $this->setHandList($victim, $list);
                 }
             }
 
-            // Attack is cancelled, but attacker still places their played card to herd
-            $this->gamestate->nextState('toAddToHerd');
+            $this->applyInterceptSubstitution($zone, $defender, $cardId);
+            $this->gamestate->nextState('interceptSubstitutionApplied');
         } else {
-            // Lie: discard the selected card anyway, plus extra blind chosen by first challenger
-            $first = $challengers[0];
-            $this->cards->moveCard($card['id'], 'discard', $defender);
-            $this->notify->all('discardPublic', clienttranslate('${player_name} discards the falsely presented card'), [
-                'player_id' => $defender,
-                'player_name' => $this->getPlayerNameById($defender),
-                'card' => $card
-            ]);
-
-            $hand = array_values($this->cards->getCardsInLocation('hand', $defender));
-            if (count($hand) > 0) {
-                $pick = $hand[bga_rand(0, count($hand)-1)];
-                $this->cards->moveCard($pick['id'], 'discard', $defender);
-                $this->notify->all('discardPublic', clienttranslate('${player_name} also discards a blind card due to a wrong intercept claim'), [
-                    'player_id' => $defender,
-                    'player_name' => $this->getPlayerNameById($defender),
-                    'card' => $pick
-                ]);
+            // Bluff caught: discard the falsely presented card; resume original effect (no extra blind penalty)
+            if ($zone === 'hand') {
+                // Remove from defender's hand
+                $dhand = $this->getHandList($defender);
+                $dtype = 0; $foundIdx = null;
+                foreach ($dhand as $i => $c) { if ((int)$c['id'] === $cardId) { $dtype = (int)($c['type'] ?? 0); $foundIdx = $i; break; } }
+                $this->notify->all('cardRemoved', '', [ 'player_id' => $defender, 'card_id' => $cardId, 'from_zone' => 'hand' ]);
+                $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $cardId, 'type' => $dtype ] ]);
+                if ($foundIdx !== null) {
+                    $list = $this->getHandList($defender);
+                    array_splice($list, $foundIdx, 1);
+                    $this->setHandList($defender, $list);
+                }
+                $counts = $this->adjustHandCount($defender, -1);
+                $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+            } else {
+                // Herd: just publish a discard for a Laser Pointer
+                $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $cardId, 'type' => 6 ] ]);
             }
-            // Original attack resumes
-            $this->gamestate->nextState('toRevealAndResolve');
+
+            // Clear intercept globals
+            $this->setGameStateValue(self::G_INTERCEPT_BY, 0);
+            $this->setGameStateValue(self::G_INTERCEPT_ZONE, 0);
+            $this->setGameStateValue(self::G_INTERCEPT_CARD, 0);
+            // Resume original effect with reveal
+            $this->gamestate->nextState('interceptGoToResolve');
         }
     }
 
     public function stRevealAndResolve(): void
     {
-        $actor = (int)$this->getActivePlayerId();
+        // Always use the original actor for resolution/logs (active player may be defender or others)
+        $actor = (int)$this->getGameStateValue(self::G_ACTOR);
         $decl  = (int)$this->getGameStateValue(self::G_PENDING_DECL);
         $targetPlayer = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
         $targetZone   = (int)$this->getGameStateValue(self::G_TARGET_ZONE); // 1=hand,2=herd
+        $selectedIdx  = (int)$this->getGameStateValue(self::G_SELECTED_SLOT_INDEX);
+        $interceptor  = (int)$this->getGameStateValue(self::G_INTERCEPT_BY);
 
         // If an effect was marked ineffective (e.g., Alley Cat vs Alley Cat), skip effect previews
         $ineff = (int)$this->getGameStateValue(self::G_EFFECT_INEFFECTIVE) === 1;
+
+        // If an intercept stands (unchallenged path routed here), apply substitution and skip reveal
+        if ($interceptor !== 0) {
+            $zone = $targetZone === 2 ? 'herd' : 'hand';
+            $cardId = (int)$this->getGameStateValue(self::G_INTERCEPT_CARD);
+            $this->applyInterceptSubstitution($zone, $interceptor, $cardId);
+            // Continue to add played card to herd via next state
+            $this->gamestate->nextState('effectResolved');
+            return;
+        }
 
         switch ($decl) {
             case 3: // Alley Cat
@@ -790,6 +890,38 @@ class Game extends \Bga\GameFramework\Table
                         'target_id'   => $targetPlayer,
                         'target_name' => $this->getPlayerNameById($targetPlayer),
                     ]);
+                    // Reveal the selected slot and apply ineffective-if-Alley-Cat rule
+                    if ($selectedIdx > 0) {
+                        $hand = $this->getHandList($targetPlayer);
+                        $idx = $selectedIdx - 1;
+                        if (isset($hand[$idx])) {
+                            $card = $hand[$idx];
+                            $ctype = (int)($card['type'] ?? 0);
+                            $cid = (int)$card['id'];
+                            if ($ctype === 3) {
+                                // Ineffective against itself
+                                $this->notify->all('alleyCatIneffective', clienttranslate('Ineffective: ${target_name}\'s card is Alley Cat and returns to hand'), [
+                                    'player_id'   => $actor,
+                                    'player_name' => $this->getPlayerNameById($actor),
+                                    'target_id'   => $targetPlayer,
+                                    'target_name' => $this->getPlayerNameById($targetPlayer),
+                                    'card'        => [ 'id' => $cid, 'type' => $ctype ],
+                                ]);
+                                $this->incStat(1, 'ineffective_attacks_due_to_matching', $actor);
+                                $this->setGameStateValue(self::G_EFFECT_INEFFECTIVE, 1);
+                            } else {
+                                // Discard the revealed card
+                                $this->notify->all('cardRemoved', '', [ 'player_id' => $targetPlayer, 'card_id' => $cid, 'from_zone' => 'hand' ]);
+                                $this->notify->all('discardUpdate', '', [ 'player_id' => $targetPlayer, 'card' => [ 'id' => $cid, 'type' => $ctype ] ]);
+                                $counts = $this->adjustHandCount($targetPlayer, -1);
+                                $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+                                // Update dummy list
+                                $list = $this->getHandList($targetPlayer);
+                                array_splice($list, $idx, 1);
+                                $this->setHandList($targetPlayer, $list);
+                            }
+                        }
+                    }
                 }
                 break;
             case 4: // Catnip
@@ -799,6 +931,22 @@ class Game extends \Bga\GameFramework\Table
                     'target_id'   => $targetPlayer,
                     'target_name' => $this->getPlayerNameById($targetPlayer),
                 ]);
+                if ($selectedIdx > 0) {
+                    $hand = $this->getHandList($targetPlayer);
+                    $idx = $selectedIdx - 1;
+                    if (isset($hand[$idx])) {
+                        $card = $hand[$idx];
+                        $ctype = (int)($card['type'] ?? 0);
+                        $cid = (int)$card['id'];
+                        // Remove from defender's hand and add to attacker's herd face-down
+                        $this->notify->all('cardRemoved', '', [ 'player_id' => $targetPlayer, 'card_id' => $cid, 'from_zone' => 'hand' ]);
+                        $this->notify->all('cardStolen', '', [ 'from_player_id' => $targetPlayer, 'to_player_id' => $actor, 'card' => [ 'id' => $cid, 'type' => $ctype ], 'hand_counts' => $this->adjustHandCount($targetPlayer, -1) ]);
+                        // Update dummy list
+                        $list = $this->getHandList($targetPlayer);
+                        array_splice($list, $idx, 1);
+                        $this->setHandList($targetPlayer, $list);
+                    }
+                }
                 break;
             case 5: // Animal Control
                 $this->notify->all('animalControlEffect', clienttranslate('${player_name} removes a card from ${target_name}\'s herd'), [
@@ -807,6 +955,11 @@ class Game extends \Bga\GameFramework\Table
                     'target_id'   => $targetPlayer,
                     'target_name' => $this->getPlayerNameById($targetPlayer),
                 ]);
+                // Fallback: without herd tracking, publish a generic discard from herd
+                if ($selectedIdx > 0) {
+                    $fakeId = 500000 + $selectedIdx;
+                    $this->notify->all('discardUpdate', '', [ 'player_id' => $targetPlayer, 'card' => [ 'id' => $fakeId, 'type' => 0 ] ]);
+                }
                 break;
             default:
                 // Non-targeting: no effect to apply here in this minimal pass
@@ -840,6 +993,12 @@ class Game extends \Bga\GameFramework\Table
             ]);
         }
 
+        // Clear intercept globals at end of resolution
+        $this->setGameStateValue(self::G_INTERCEPT_BY, 0);
+        $this->setGameStateValue(self::G_INTERCEPT_ZONE, 0);
+        $this->setGameStateValue(self::G_INTERCEPT_CARD, 0);
+        $this->setGameStateValue(self::G_SELECTED_SLOT_INDEX, 0);
+
         $this->gamestate->nextState('cardAdded');
     }
 
@@ -847,6 +1006,47 @@ class Game extends \Bga\GameFramework\Table
     {
         $this->checkAction('actSelectBlindFromChallenger');
         $actor = (int)$this->getActivePlayerId();
+
+        // If we are in one of the effect selection states, only record the slot (no reveal yet)
+        $state = $this->gamestate->state();
+        $stateName = is_array($state) && isset($state['name']) ? $state['name'] : '';
+        if (in_array($stateName, ['alleyCatEffectSelect','catnipEffectSelect','animalControlEffectSelect'], true)) {
+            $defender = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+            // Defensive: make sure the provided player_id matches defender
+            if ($player_id !== $defender) {
+                $player_id = $defender;
+            }
+            $this->setGameStateValue(self::G_SELECTED_SLOT_INDEX, (int)$card_index);
+            $zoneCode = (int)$this->getGameStateValue(self::G_TARGET_ZONE); // 1=hand,2=herd
+            $zone = $zoneCode === 2 ? 'herd' : 'hand';
+
+            // Determine selected type for defender-only preview (hands only)
+            $selectedType = null;
+            if ($zone === 'hand') {
+                $hand = $this->getHandList($defender);
+                $idx = max(1, (int)$card_index) - 1;
+                if (isset($hand[$idx]) && isset($hand[$idx]['type'])) {
+                    $selectedType = (int)$hand[$idx]['type'];
+                }
+            }
+            // Private defender preview
+            $this->notifyPlayer($defender, 'defenderTargetPreview', '', [
+                'selected_slot_index' => (int)$card_index,
+                'selected_slot_type' => $selectedType,
+                'zone' => $zone,
+            ]);
+            // Public announcement without type
+            $this->notify->all('targetSlotSelected', '', [
+                'target_player_id' => $defender,
+                'selected_slot_index' => (int)$card_index,
+                'zone' => $zone,
+            ]);
+
+            // Handover to defender to declare/pass intercept happens in a GAME router state
+            // (changing active player during an ACTIVE_PLAYER state is forbidden by the engine).
+            $this->gamestate->nextState('toIntercept');
+            return;
+        }
 
         // Determine the ordered hand as seen by the owner
         $realAssoc = is_object($this->cards) ? $this->cards->getCardsInLocation('hand', $player_id) : [];
@@ -860,7 +1060,7 @@ class Game extends \Bga\GameFramework\Table
         $card_id = (int)$picked['id'];
         $card_type = isset($picked['type']) ? (int)$picked['type'] : 0;
 
-        // Special-case: Alley Cat ineffective-vs-same-identity rule
+        // Special-case: Alley Cat ineffective-vs-same-identity rule (legacy penalty/effect path)
         $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
         // Detect Alley Cat main-effect selection (not a challenge penalty):
         // either flagged via G_PENALTY_TO_RESOLVE or implied by having no challenger
@@ -1134,6 +1334,10 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateValue(self::G_CHALLENGER, 0);
         $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 0);
         $this->setGameStateValue(self::G_EFFECT_INEFFECTIVE, 0);
+        $this->setGameStateValue(self::G_INTERCEPT_BY, 0);
+        $this->setGameStateValue(self::G_INTERCEPT_ZONE, 0);
+        $this->setGameStateValue(self::G_INTERCEPT_CARD, 0);
+        $this->setGameStateValue(self::G_SELECTED_SLOT_INDEX, 0);
 
         // Now advance to the next player in turn order
         $this->activeNextPlayer();
@@ -1145,17 +1349,42 @@ class Game extends \Bga\GameFramework\Table
     public function argInterceptDeclare(): array
     {
         $target = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
-        // Avoid calling getPlayerNameById with 0 when no target is set
         $name = $target > 0 ? $this->getPlayerNameById($target) : '';
+        $idx = (int)$this->getGameStateValue(self::G_SELECTED_SLOT_INDEX);
+        $zoneCode = (int)$this->getGameStateValue(self::G_TARGET_ZONE);
+        $zone = $zoneCode === 2 ? 'herd' : 'hand';
         return [
             'target_player' => $name,
+            'defender_id' => $target,
+            // Defender-only prompt will rely on a private notification, but include generic index
+            'selected_slot_index' => $idx,
+            'zone' => $zone,
         ];
     }
 
     public function argInterceptChallengeWindow(): array
     {
+        // Defender is the player who declared the intercept; fallback to the targeted player
+        $defenderId = (int)$this->getGameStateValue(self::G_INTERCEPT_BY);
+        if ($defenderId === 0) {
+            $defenderId = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        }
+
+        // Any seated player other than the defender may challenge
+        $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+        $eligible = [];
+        foreach ($players as $p) {
+            $pid = (int)$p['id'];
+            if ($pid !== $defenderId) {
+                $eligible[] = $pid;
+            }
+        }
+
         return [
-            'eligible' => [],
+            'defender' => $defenderId ? $this->getPlayerNameById($defenderId) : '',
+            'defender_id' => $defenderId,
+            'eligible' => $eligible,
+            'eligible_challengers' => $eligible,
         ];
     }
 
@@ -1164,21 +1393,31 @@ class Game extends \Bga\GameFramework\Table
         return [];
     }
 
+    public function argEffectSelectCommon(): array
+    {
+        $actor = (int)$this->getGameStateValue(self::G_ACTOR);
+        $defender = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        $zoneCode = (int)$this->getGameStateValue(self::G_TARGET_ZONE); // 1=hand,2=herd
+        $handCount = 0;
+        if ($zoneCode === 1) {
+            $handCount = count($this->getHandList($defender));
+        } else {
+            // Fallback when herd model is not tracked: show at least 1 slot for selection UI
+            $handCount = 1;
+        }
+        return [
+            'actor_id' => $actor,
+            'actor_name' => $this->getPlayerNameById($actor),
+            'challengers' => [[ 'player_id' => $defender, 'hand_count' => $handCount ]],
+        ];
+    }
+
     // =============
     // Intercept actions (minimal)
     // =============
     public function actPassIntercept(): void
     {
         $this->checkAction('actPassIntercept');
-        // If Alley Cat was declared, attacker chooses a blind card from target's hand
-        $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
-        if ($decl === 3) { // Alley Cat
-            // Flag main-effect selection flow (not a challenge penalty)
-            $this->setGameStateValue(self::G_PENALTY_TO_RESOLVE, 1);
-            // Route through a GAME state to safely switch active player, then enter effect selection
-            $this->gamestate->nextState('prepareEffect');
-            return;
-        }
         $this->gamestate->nextState('noIntercept');
     }
 
@@ -1186,14 +1425,42 @@ class Game extends \Bga\GameFramework\Table
     {
         $actor = (int)$this->getGameStateValue(self::G_ACTOR);
         $this->gamestate->changeActivePlayer($actor);
-        // If this was flagged as an Alley Cat main effect (unchallenged), route to the
-        // dedicated effect selection state instead of the truthful penalty state.
         $decl = (int)$this->getGameStateValue(self::G_PENDING_DECL);
-        if ($decl === 3 && (int)$this->getGameStateValue(self::G_PENALTY_TO_RESOLVE) === 1) {
-            $this->gamestate->nextState('toEffectSelect');
-            return;
+        $target = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+
+        // If we have a targeted effect with a selected defender and no effect slot picked yet,
+        // route to the appropriate effect selection state; otherwise proceed to truthful penalty flow.
+        if ($this->requiresTarget($decl) && $target !== 0 && (int)$this->getGameStateValue(self::G_SELECTED_SLOT_INDEX) === 0) {
+            if ($decl === 3) {
+                $this->gamestate->nextState('toEffectAlley');
+                return;
+            } elseif ($decl === 4) {
+                $this->gamestate->nextState('toEffectCatnip');
+                return;
+            } elseif ($decl === 5) {
+                $this->gamestate->nextState('toEffectAnimal');
+                return;
+            }
         }
         $this->gamestate->nextState('toPenalty');
+    }
+
+    /**
+     * Router: switch active player to the defender after the attacker selected
+     * a blind slot for a targeted effect (e.g., Alley Cat, Catnip, Animal Control),
+     * then enter the intercept declaration state.
+     *
+     * Important: changeActivePlayer must not be called from an ACTIVE_PLAYER state
+     * action handler. Using a GAME-type state avoids the engine error
+     * "Impossible to change active player during activeplayer type state".
+     */
+    public function stPrepareInterceptDeclare(): void
+    {
+        $defender = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        if ($defender > 0) {
+            $this->gamestate->changeActivePlayer($defender);
+        }
+        $this->gamestate->nextState('toIntercept');
     }
 
     public function actDeclareIntercept(int $card_id, string $zone): void
@@ -1206,74 +1473,70 @@ class Game extends \Bga\GameFramework\Table
         // Defender is the current active player at this state
         $defender = (int)$this->getActivePlayerId();
 
-        // Validate selected card from dummy/real hand and ensure it's a Laser Pointer (type 6)
-        $hand = $this->getHandList($defender);
-        $foundIdx = null;
-        $foundType = 0;
-        foreach ($hand as $i => $c) {
-            if ((int)$c['id'] === (int)$card_id) {
-                $foundIdx = $i;
-                $foundType = isset($c['type']) ? (int)$c['type'] : 0;
-                break;
+        // Validate for hand zone only (herd zone is accepted without strict validation in dummy mode)
+        if ($zone === 'hand') {
+            $hand = $this->getHandList($defender);
+            $found = null;
+            foreach ($hand as $c) {
+                if ((int)$c['id'] === (int)$card_id) { $found = $c; break; }
             }
-        }
-        if ($foundIdx === null) {
-            throw new \BgaUserException(self::_("Selected card not found in hand"));
-        }
-        if ($zone !== 'hand') {
-            throw new \BgaUserException(self::_("Only hand intercept is supported"));
-        }
-        if ($foundType !== 6) {
-            throw new \BgaUserException(self::_("Selected card is not a Laser Pointer"));
+            if ($found === null) {
+                throw new \BgaUserException(self::_("Selected card not found in hand"));
+            }
+            // Do not enforce Laser Pointer type here; truth is resolved in challenge window
         }
 
-        // Discard the defender's Laser Pointer (simulate without real deck)
-        $this->notify->all('cardRemoved', '', [
-            'player_id' => $defender,
-            'card_id'   => $card_id,
-            'from_zone' => 'hand',
-        ]);
-        $this->notify->all('discardUpdate', '', [
-            'player_id' => $defender,
-            'card' => [ 'id' => $card_id, 'type' => 6 ],
-        ]);
-        // Persist/notify hand count decrement for defender
-        $counts = $this->adjustHandCount($defender, -1);
-        $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+        // Store intercept globals; resolution happens in intercept challenge window or reveal
+        $this->setGameStateValue(self::G_INTERCEPT_BY, $defender);
+        $this->setGameStateValue(self::G_INTERCEPT_ZONE, $this->zoneCodeFromString($zone));
+        $this->setGameStateValue(self::G_INTERCEPT_CARD, (int)$card_id);
 
-        // Update stored hand order list (dummy mode)
-        $list = $this->getHandList($defender);
-        if ($foundIdx !== null) {
-            array_splice($list, $foundIdx, 1);
-            $this->setHandList($defender, $list);
-        }
-
-        // Cancel the attack: move the played card from limbo to attacker's discard (face-up)
-        $actor  = (int)$this->getGameStateValue(self::G_ACTOR);
-        $pCard  = (int)$this->getGameStateValue(self::G_PENDING_CARD);
-        $pType  = (int)$this->getGameStateValue(self::G_PENDING_ACTUAL);
-        if ($pCard > 0) {
-            $this->notify->all('discardUpdate', '', [
-                'player_id' => $actor,
-                'card' => [ 'id' => $pCard, 'type' => $pType ],
-            ]);
-        }
-
-        // End the turn immediately (no herd placement, no further effect)
-        $this->gamestate->nextState('cancelled');
+        $this->gamestate->nextState('interceptDeclared');
     }
 
     public function actChallengeIntercept(): void
     {
         $this->checkAction('actChallengeIntercept');
-        // Minimal: treat as no challengers and continue
-        $this->gamestate->nextState('interceptUnchallenged');
+        // First challenger only (single-challenger model)
+        if ((int)$this->getGameStateValue(self::G_CHALLENGER) === 0) {
+            $this->setGameStateValue(self::G_CHALLENGER, (int)$this->getCurrentPlayerId());
+        }
+        $this->gamestate->nextState('interceptChallenged');
     }
 
     public function actPassChallengeIntercept(): void
     {
         $this->checkAction('actPassChallengeIntercept');
-        $this->gamestate->nextState('interceptUnchallenged');
+        $pid = (int)$this->getCurrentPlayerId();
+        $this->gamestate->setPlayerNonMultiactive($pid, 'interceptUnchallenged');
+    }
+
+    /**
+     * MULTI router: set the eligible challenger(s) active for the intercept challenge window.
+     */
+    public function stEnterInterceptChallengeWindow(): void
+    {
+        // Defender is the one who declared intercept; any other seated player can challenge
+        $defender = (int)$this->getGameStateValue(self::G_INTERCEPT_BY);
+        if ($defender === 0) {
+            $defender = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
+        }
+
+        $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+        $eligible = [];
+        foreach ($players as $p) {
+            $pid = (int)$p['id'];
+            if ($pid !== $defender) {
+                $eligible[] = $pid;
+            }
+        }
+
+        if (!empty($eligible)) {
+            $this->gamestate->setPlayersMultiactive($eligible, 'interceptUnchallenged', true);
+        } else {
+            // No challengers: proceed as unchallenged
+            $this->gamestate->nextState('interceptUnchallenged');
+        }
     }
 
     /**
@@ -1321,6 +1584,10 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateInitialValue(self::G_TARGET_PLAYER, 0);
         $this->setGameStateInitialValue(self::G_TARGET_ZONE, 0);
         $this->setGameStateInitialValue(self::G_EFFECT_INEFFECTIVE, 0);
+        $this->setGameStateInitialValue(self::G_INTERCEPT_BY, 0);
+        $this->setGameStateInitialValue(self::G_INTERCEPT_ZONE, 0);
+        $this->setGameStateInitialValue(self::G_INTERCEPT_CARD, 0);
+        $this->setGameStateInitialValue(self::G_SELECTED_SLOT_INDEX, 0);
 
         // Init game statistics.
         //

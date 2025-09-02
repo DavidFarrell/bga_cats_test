@@ -1,7 +1,7 @@
 Herding Cats — Catnip Test Plan
 
 Summary
-- Targeted hand steal. Reveal selected hand card; if it is Catnip, ineffective (defender keeps). Otherwise move revealed card into attacker’s herd-FD; only attacker sees its identity. Attacker’s played card goes to herd-FD as Catnip unless ineffective-against-itself triggers or a Laser Pointer interception stands; in those cases, the attacker’s played card is discarded face-up (no herd placement).
+- Targeted hand steal. Reveal selected hand card; if it is Catnip, ineffective (defender keeps). Otherwise move revealed card into attacker’s herd-FD; only attacker sees its identity. Attacker’s played card goes to herd-FD as Catnip unless ineffective-against-itself triggers. If a Laser Pointer interception stands, resolve by substitution: attacker steals the defender’s Laser Pointer into attacker’s herd-FD instead of revealing/stealing the selected card; the selected card remains hidden; attacker’s Catnip also goes to herd-FD.
 
 Preconditions
 - Players A (active) and B (defender) seated; B has ≥1 card in hand.
@@ -64,17 +64,18 @@ Cleanup:
 Case CN6 — Defender intercepts with Laser Pointer from hand
 1) After slot selection (before reveal), B declares Laser Pointer from hand.
 Expected:
-- Selected slot remains hidden; attack canceled.
-- B reveals LP and discards it face-up; B hand counter -1.
-- A’s played card is discarded face-up (no herd placement).
-- Logs: LP interception and cancel.
+- Selected slot remains hidden; substitution applies.
+- B reveals LP (to engine) and the LP is stolen to A’s herd-FD; B hand counter -1; A herd +2 total (stolen LP + played Catnip).
+- A’s played Catnip also enters A herd-FD (no discard due to intercept).
+- Defender-only prompt shows “Attacker selected Card N, <type>” with a pulse-highlight on that slot.
+- Logs: LP interception (hand) and substitution/steal.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 <a id="cn7"></a>
 Case CN7 — Interception claim challenged
 1) C challenges B’s LP claim.
-Expected (truthful LP): B discards LP; C discards blind penalty; no reveal of slot; A’s played card is discarded face-up (no herd placement).
+Expected (truthful LP): substitution stands; selected slot stays hidden; A steals LP to herd-FD and Catnip also goes to herd-FD; C discards a blind penalty.
 Expected (bluff LP): B takes penalty; CN proceeds (CN1/CN2) with reveal.
 Cleanup:
 - Express Stop the game before proceeding to any other case.

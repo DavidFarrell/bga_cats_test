@@ -80,11 +80,12 @@ $machinestates = [
         ->type(StateType::GAME)
         ->action('stResolveChallenge')
         ->transitions([
-            'bluffCaught' => 31,       // Player was bluffing
-            'challengeFailed' => 32,   // Player was truthful 
-            'goToTarget' => 40,        // Select target now
-            'goToIntercept' => 50,     // Target already chosen; proceed to intercept
-            'goToResolve' => 80,       // No targeting; resolve
+            'bluffCaught' => 31,         // Player was bluffing
+            'challengeFailed' => 32,     // Player was truthful 
+            'goToTarget' => 40,          // Select target now
+            // Target already chosen; proceed to effect slot selection router (then intercept)
+            'goToIntercept' => 52,
+            'goToResolve' => 80,         // No targeting; resolve
         ])
         ->build(),
 
@@ -154,13 +155,6 @@ $machinestates = [
         ->transitions([
             'interceptDeclared' => 60,
             'noIntercept' => 80,
-            // For Alley Cat unchallenged path: prepare effect selection via GAME state
-            'prepareEffect' => 52,
-            // Unchallenged Alley Cat effect selection (no intercept): go directly to a distinct
-            // selection state instead of reusing the penalty state/labels.
-            'noInterceptEffect' => 41,
-            // Intercept immediately cancels the attack (no herd add) and ends turn
-            'cancelled' => 95,
             'zombie' => 80,  // Handle zombie players
         ])
         ->build(),
@@ -169,12 +163,14 @@ $machinestates = [
     // Note: Alley Cat (unchallenged) should NOT route here anymore.
     52 => GameStateBuilder::create()
         ->name('prepareAttackerPenalty')
-        ->description('Preparing attacker penalty selection')
+        ->description('Prepare next selection')
         ->type(StateType::GAME)
         ->action('stPrepareAttackerPenalty')
         ->transitions([
             'toPenalty' => 32,
-            'toEffectSelect' => 41,
+            'toEffectAlley' => 41,
+            'toEffectCatnip' => 42,
+            'toEffectAnimal' => 43,
         ])
         ->build(),
 
@@ -184,15 +180,56 @@ $machinestates = [
         ->description(clienttranslate('${actplayer} may discard a card from opponent\'s hand'))
         ->descriptionmyturn(clienttranslate('You may discard one card from opponent\'s hand'))
         ->type(StateType::ACTIVE_PLAYER)
-        // Reuse the same args shape as truthful penalty to get hand count/target
-        ->args('argAttackerSelectTruthfulPenalty')
+        ->args('argEffectSelectCommon')
         ->possibleactions([
             // Reuse the same action used to pick a blind card from a hand
             'actSelectBlindFromChallenger'
         ])
         ->transitions([
-            'toResolve' => 80,
+            'toIntercept' => 49,
             'zombie' => 80,
+        ])
+        ->build(),
+
+    42 => GameStateBuilder::create()
+        ->name('catnipEffectSelect')
+        ->description(clienttranslate('${actplayer} selects a card from opponent\'s hand to steal to herd'))
+        ->descriptionmyturn(clienttranslate('Select one card from opponent\'s hand'))
+        ->type(StateType::ACTIVE_PLAYER)
+        ->args('argEffectSelectCommon')
+        ->possibleactions([
+            'actSelectBlindFromChallenger'
+        ])
+        ->transitions([
+            'toIntercept' => 49,
+            'zombie' => 80,
+        ])
+        ->build(),
+
+    43 => GameStateBuilder::create()
+        ->name('animalControlEffectSelect')
+        ->description(clienttranslate('${actplayer} selects one card from opponent\'s herd'))
+        ->descriptionmyturn(clienttranslate('Select one face-down herd card'))
+        ->type(StateType::ACTIVE_PLAYER)
+        ->args('argEffectSelectCommon')
+        ->possibleactions([
+            // Reuse same action signature (player_id, index)
+            'actSelectBlindFromChallenger'
+        ])
+        ->transitions([
+            'toIntercept' => 49,
+            'zombie' => 80,
+        ])
+        ->build(),
+
+    // Router to switch active player from attacker to defender before intercept declaration
+    49 => GameStateBuilder::create()
+        ->name('prepareInterceptDeclare')
+        ->description('Prepare intercept declaration')
+        ->type(StateType::GAME)
+        ->action('stPrepareInterceptDeclare')
+        ->transitions([
+            'toIntercept' => 50,
         ])
         ->build(),
 
@@ -200,6 +237,7 @@ $machinestates = [
         ->name('interceptChallengeWindow')
         ->description(clienttranslate('Players may challenge ${defender}\'s Laser Pointer intercept'))
         ->type(StateType::MULTIPLE_ACTIVE_PLAYER)
+        ->action('stEnterInterceptChallengeWindow')
         ->args('argInterceptChallengeWindow')
         ->possibleactions([
             'actChallengeIntercept',
@@ -220,6 +258,7 @@ $machinestates = [
             'interceptBluffCaught' => 75,     // Defender was bluffing about Laser Pointer
             'interceptChallengeFailed' => 80, // Defender really had Laser Pointer
             'interceptGoToResolve' => 80,     // Minimal path
+            'interceptSubstitutionApplied' => 90,
         ])
         ->build(),
 

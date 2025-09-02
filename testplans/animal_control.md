@@ -1,7 +1,7 @@
 Herding Cats — Animal Control Test Plan
 
 Summary
-- Targeted herd removal. Must select a face-down herd card. Reveal selected card; if it is Animal Control, ineffective (flip face-up and protect). Otherwise discard it from defender’s herd. Attacker’s played card goes to herd-FD as Animal Control unless ineffective-against-itself triggers or a Laser Pointer interception stands; in those cases, the attacker’s played card is discarded face-up (no herd placement).
+- Targeted herd removal. Must select a face-down herd card. Reveal selected card; if it is Animal Control, ineffective (flip face-up and protect). Otherwise discard it from defender’s herd. Attacker’s played card goes to herd-FD as Animal Control unless ineffective-against-itself triggers. If a Laser Pointer interception stands, resolve by substitution: defender discards a Laser Pointer from herd face-up instead of revealing/losing the selected herd card; the selected card remains hidden; attacker’s Animal Control still enters attacker’s herd-FD.
 
 Preconditions
 - Players A (active) and B (defender); B has ≥1 face-down herd card.
@@ -63,17 +63,18 @@ Cleanup:
 Case AN6 — Defender intercepts with Laser Pointer from herd (unchallenged)
 1) After A selects the FD herd card (before reveal), B declares Laser Pointer from herd.
 Expected:
-- Selected herd card remains hidden and untouched.
+- Selected herd card remains hidden and untouched; substitution applies.
 - B discards LP face-up from herd; B herd count -1.
-- A’s played card is discarded face-up (no herd placement).
-- Logs: LP interception (herd) and cancel.
+- A’s played Animal Control still enters A herd-FD (no discard due to intercept).
+- Defender-only prompt shows “Attacker selected Card N, <type>” with a pulse-highlight on that slot.
+- Logs: LP interception (herd) and substitution.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 <a id="an7"></a>
 Case AN7 — Interception claim challenged
 1) C challenges B’s LP-from-herd claim.
-Expected (truthful LP): B discards LP; C discards blind penalty; selected card remains hidden; A’s played card is discarded face-up (no herd placement).
+Expected (truthful LP): B discards LP; C discards blind penalty; selected card remains hidden; substitution stands; A’s Animal Control enters A herd-FD.
 Expected (bluff LP): B takes penalty; AN proceeds (AN1/AN2) and selected card is revealed.
 Cleanup:
 - Express Stop the game before proceeding to any other case.

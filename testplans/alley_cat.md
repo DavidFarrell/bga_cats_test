@@ -1,7 +1,7 @@
 Herding Cats — Alley Cat Test Plan
 
 Summary
-- Targeted hand attack. Reveal selected hand card; if it is Alley Cat, ineffective (return to hand). Otherwise defender discards that revealed card. Attacker’s played card goes to herd-FD as Alley Cat unless ineffective-against-itself triggers or a Laser Pointer interception stands; in those cases, the attacker’s played card is discarded face-up (no herd placement).
+- Targeted hand discard. Reveal selected hand card; if it is Alley Cat, ineffective (return to hand). Otherwise defender discards that revealed card. Attacker’s played card goes to herd-FD as Alley Cat unless ineffective-against-itself triggers. If a Laser Pointer interception stands, resolve by substitution: defender discards Laser Pointer from hand face-up instead of revealing/losing the selected card; the selected card remains hidden; attacker’s Alley Cat still enters attacker’s herd-FD.
 
 Preconditions
 - Players A (active) and B (defender) seated; B has ≥1 card in hand.
@@ -150,10 +150,11 @@ Cleanup
 Case AC6 — Defender intercepts with Laser Pointer from hand (unchallenged)
 1) During AC1 step 2 (after slot selection, before reveal), B declares Laser Pointer from hand.
 Expected:
-- No reveal of the selected slot; attack canceled.
-- B reveals LP and discards it face-up; B hand counter -1.
-- A’s played card is discarded face-up (no herd placement).
-- Logs: LP interception (hand) and cancel.
+- No reveal of the selected slot; substitution applies.
+- B reveals LP (to engine) and discards it face-up; B hand counter -1.
+- A’s played Alley Cat still enters A herd-FD (no discard due to intercept).
+- Defender-only prompt shows “Attacker selected Card N, <type>” with a pulse-highlight on that slot.
+- Logs: LP interception (hand) and substitution.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
@@ -161,9 +162,9 @@ Cleanup:
 Case AC7 — Interception claim challenged
 1) Same as AC6, but C challenges B’s LP claim.
 Expected (truthful LP):
-- B reveals LP, discards it; C discards a blind penalty; no reveal of selected slot; attack canceled; A’s played card is discarded face-up (no herd placement).
+- B reveals LP, discards it; C discards a blind penalty; no reveal of selected slot; substitution stands; A’s Alley Cat enters A herd-FD.
 Expected (bluff LP):
-- B fails challenge: B discards blind penalty; AC proceeds (go to AC1/AC2) and selected slot is revealed.
+- B fails challenge: B discards the presented bluff card face-up (the exact card they clicked as LP); then AC proceeds (go to AC1/AC2) and the selected slot is revealed and resolved normally. No extra blind/random penalty is applied. Net effect for defender in this scenario is −2 cards: the presented bluff card plus the card removed by Alley Cat.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 

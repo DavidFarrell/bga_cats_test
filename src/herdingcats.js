@@ -312,6 +312,12 @@ function (dojo, declare) {
                 case 'alleyCatEffectSelect':
                     this.onEnteringState_selectPenalty(a);
                     break;
+                case 'catnipEffectSelect':
+                    this.onEnteringState_selectPenalty(a);
+                    break;
+                case 'animalControlEffectSelect':
+                    this.onEnteringState_selectPenalty(a);
+                    break;
             }
         },
 
@@ -360,6 +366,25 @@ function (dojo, declare) {
         onEnteringState_interceptDeclare: function(args) {
             if (this.isCurrentPlayerActive()) {
                 this.updateActionPrompts('interceptDeclare', args);
+                if (this._defenderPreview && parseInt(args && args.defender_id) === parseInt(this.player_id)) {
+                    const idx = this._defenderPreview.selected_slot_index;
+                    const type = this._defenderPreview.selected_slot_type;
+                    const label = (this.cardTypeNames && this.cardTypeNames[type]) ? this.cardTypeNames[type] : (type || '?');
+                    const span = $('hc_prompt_text');
+                    if (span) {
+                        span.innerHTML = _('Attacker selected Card ${n}, ${t}')
+                            .replace('${n}', idx)
+                            .replace('${t}', label);
+                    }
+                    try {
+                        if (this._defenderPreview.zone === 'hand') {
+                            const host = $('hc_current_hand');
+                            if (host && host.children && host.children.length >= idx) {
+                                dojo.addClass(host.children[idx - 1], 'hc_pulse_slot');
+                            }
+                        }
+                    } catch(e) { console.warn('highlight failed', e); }
+                }
                 // Allow the defender to select a Laser Pointer card from hand
                 if (this.playerHand && this.playerHand.setSelectionMode) {
                     this.playerHand.setSelectionMode(1);
@@ -392,6 +417,9 @@ function (dojo, declare) {
                     // Disable hand selection
                     this.playerHand.setSelectionMode(0);
                     this.hideDeclarationDialog();
+                    break;
+                case 'interceptDeclare':
+                    try { dojo.query('.hc_pulse_slot').removeClass('hc_pulse_slot'); } catch(e) {}
                     break;
                 case 'interceptDeclare':
                     // Disable hand selection after intercept window
@@ -468,6 +496,20 @@ function (dojo, declare) {
                         this.renderPenaltyHand(target.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
                     }
                     break;
+                case 'catnipEffectSelect':
+                    if (args && args.challengers && args.challengers.length > 0) {
+                        const target = args.challengers[0];
+                        this._penaltyArgs = { target_player_id: target.player_id };
+                        this.renderPenaltyHand(target.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
+                    }
+                    break;
+                case 'animalControlEffectSelect':
+                    if (args && args.challengers && args.challengers.length > 0) {
+                        const target = args.challengers[0];
+                        this._penaltyArgs = { target_player_id: target.player_id };
+                        this.renderPenaltyHand(target.hand_count || 1, (i)=>this.onPickTruthPenalty(i));
+                    }
+                    break;
 
                 case 'challengerSelectBluffPenalty':
                     if (args) {
@@ -530,6 +572,12 @@ function (dojo, declare) {
                     break;
                 case 'alleyCatEffectSelect':
                     promptText = _('You may discard one card from opponent\'s hand');
+                    break;
+                case 'catnipEffectSelect':
+                    promptText = _('Select one card from opponent\'s hand to steal');
+                    break;
+                case 'animalControlEffectSelect':
+                    promptText = _('Select one face-down herd card');
                     break;
                 case 'challengerSelectBluffPenalty':
                     promptText = _('Select opponent card to discard');
@@ -839,22 +887,29 @@ function (dojo, declare) {
         },
 
         onDeclareIntercept: function() {
-            // Defender must select a Laser Pointer card from hand
-            let sel = [];
-            try { sel = this.playerHand ? this.playerHand.getSelectedItems() : []; } catch(e) { sel = []; }
-            if (!sel || sel.length === 0) {
-                this.showMessage(_('Please select your Laser Pointer from hand'), 'error');
-                return;
-            }
-            const cardId = parseInt(sel[0].id);
-            if (isNaN(cardId)) {
-                this.showMessage(_('Invalid selection'), 'error');
-                return;
+            // Choose zone based on declared effect type: Animal Control intercepts from herd, others from hand
+            const zone = (this.currentDeclaredType == this.CARD_TYPE_ANIMALCONTROL) ? 'herd' : 'hand';
+            let cardId = 0;
+            if (zone === 'hand') {
+                let sel = [];
+                try { sel = this.playerHand ? this.playerHand.getSelectedItems() : []; } catch(e) { sel = []; }
+                if (!sel || sel.length === 0) {
+                    this.showMessage(_('Please select Laser Pointer (or a card to bluff as Laser Pointer) from hand'), 'error');
+                    return;
+                }
+                cardId = parseInt(sel[0].id);
+                if (isNaN(cardId)) {
+                    this.showMessage(_('Invalid selection'), 'error');
+                    return;
+                }
+            } else {
+                // Herd: server will validate minimally; use a placeholder id
+                cardId = 600000 + Math.floor(Math.random()*1000);
             }
 
             this.ajaxcall(this._actionUrl("actDeclareIntercept"), {
                 card_id: cardId,
-                zone: 'hand',
+                zone: zone,
                 lock: true
             }, this, function(result) {
                 // Success handled by notification
@@ -919,9 +974,9 @@ function (dojo, declare) {
             // Set notification durations
             this.notifqueue.setSynchronousDuration(500);
         },  
-        
+
         // Notification handlers
-        
+
         notif_cardPlayed: async function( args )
         {
             console.log( 'notif_cardPlayed', args );
@@ -943,6 +998,40 @@ function (dojo, declare) {
                 declared_card: declaredType,
                 acting_player_name: args.player_name
             });
+        },
+
+        notif_defenderTargetPreview: async function(args) {
+            this._defenderPreview = {
+                selected_slot_index: args.selected_slot_index,
+                selected_slot_type: args.selected_slot_type,
+                zone: args.zone
+            };
+        },
+
+        notif_targetSlotSelected: async function(args) {
+            this._lastSelectedSlot = { zone: args.zone, index: args.selected_slot_index, target: args.target_player_id };
+        },
+
+        notif_interceptApplied: async function(args) {
+            const effect = args.effect_type;
+            const label = (this.cardTypeNames && this.cardTypeNames[effect]) ? this.cardTypeNames[effect] : effect;
+            this.showMessage(dojo.string.substitute(_('Intercept applied (${label})'), { label }), 'info');
+        },
+
+        notif_interceptChallengeResult: async function(args) {
+            // Lightweight log message for intercept challenge outcome
+            try {
+                const bluff = !!args.was_bluffing;
+                const who = args.defender_id;
+                const zone = args.zone || 'hand';
+                if (bluff) {
+                    this.showMessage(_('Intercept bluff caught: defender loses presented card; attack proceeds.'), 'info');
+                } else {
+                    this.showMessage(_('Intercept stands: challenger discards a blind penalty.'), 'info');
+                }
+            } catch (e) {
+                console.warn('notif_interceptChallengeResult error', e);
+            }
         },
 
         notif_challenge: async function( args )
