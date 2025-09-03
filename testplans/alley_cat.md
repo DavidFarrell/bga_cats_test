@@ -186,9 +186,9 @@ Case Checklist
 - [x] [AC3 — Truthful, challenged and challenge fails](#ac3)
 - [x] [AC4 — Bluff, unchallenged](#ac4)
 - [x] [AC5 — Bluff, challenged and challenge succeeds](#ac5)
-- [ ] [AC6 — Defender intercepts with Laser Pointer from hand (unchallenged)](#ac6)
-- [ ] [AC7 — Interception claim challenged](#ac7)
-- [ ] [AC8 — Target selection gates](#ac8)
+- [x] [AC6 — Defender intercepts with Laser Pointer from hand (unchallenged)](#ac6)
+- [x] [AC7 — Interception claim challenged](#ac7)
+- [x] [AC8 — Target selection gates](#ac8)
 
 Case Index (JSON)
 ```

@@ -44,14 +44,14 @@ function (dojo, declare) {
             this.currentDeclaration = null;
             this.targetSelectionActive = false;
             
-            // Card type names for UI
-            this.cardTypeNames = {  
-                1: _('Kitten'),
-                2: _('Show Cat'),
-                3: _('Alley Cat'),
-                4: _('Catnip'),
-                5: _('Animal Control'),
-                6: _('Laser Pointer')
+            // Card type names for UI (plain strings; translate at render time)
+            this.cardTypeNames = {
+                1: 'Kitten',
+                2: 'Show Cat',
+                3: 'Alley Cat',
+                4: 'Catnip',
+                5: 'Animal Control',
+                6: 'Laser Pointer'
             };
         },
 
@@ -863,10 +863,9 @@ function (dojo, declare) {
         onSelectTarget: function(targetId, targetZone) {
             this.hideTargetSelection();
             
-            // Send both player_id (preferred) and legacy slot_index for compatibility
+            // Send only player_id and zone (server is authoritative on defender/zone)
             this.ajaxcall(this._actionUrl("actSelectTargetSlot"), {
                 player_id: targetId,
-                slot_index: targetId,
                 zone: targetZone,
                 lock: true
             }, this, function(result) {
