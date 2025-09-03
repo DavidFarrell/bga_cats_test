@@ -1,7 +1,7 @@
 Herding Cats — Catnip Test Plan
 
 Summary
-- Targeted hand steal. Reveal selected hand card; if it is Catnip, ineffective (defender keeps). Otherwise move revealed card into attacker’s herd-FD; only attacker sees its identity. Attacker’s played card goes to herd-FD as Catnip unless ineffective-against-itself triggers. If a Laser Pointer interception stands, resolve by substitution: attacker steals the defender’s Laser Pointer into attacker’s herd-FD instead of revealing/stealing the selected card; the selected card remains hidden; attacker’s Catnip also goes to herd-FD.
+- Targeted hand steal. Reveal the selected hand card to the attacker only (not public). If the selected card is Catnip, reveal it publicly (ineffective: defender keeps). Otherwise move the revealed card into attacker’s herd-FD; only attacker sees its identity in UI. Attacker’s played card goes to herd-FD as Catnip unless ineffective-against-itself triggers. If a Laser Pointer interception stands, resolve by substitution: attacker steals the defender’s Laser Pointer into attacker’s herd-FD instead of revealing/stealing the selected card; the selected card remains hidden; attacker’s Catnip also goes to herd-FD.
 
 Preconditions
 - Players A (active) and B (defender) seated; B has ≥1 card in hand.
@@ -15,6 +15,7 @@ Case CN1 — Truthful, unchallenged, normal steal
 1) A declares Catnip targeting B; others pass.
 2) A selects a slot from B’s hand in staging area; reveal shows NOT Catnip.
 Expected:
+- Reveal visible to A only (attacker); non-actor tabs do not receive the stolen card type.
 - Revealed B card transfers to A herd-FD; only A can see its identity in UI.
 - A’s played card enters A herd-FD as Catnip.
 - B hand counter -1; A hand counter -1; A herd count +2 (two cards added).
@@ -26,7 +27,7 @@ Cleanup:
 Case CN2 — Truthful, unchallenged, ineffective-against-itself
 1) As CN1, but reveal shows B’s card is Catnip.
 Expected:
-- Ineffective: B keeps the card (return to B’s hand).
+- Public reveal (all players see B’s Catnip). Ineffective: B keeps the card (return to B’s hand).
 - A’s played card is discarded face-up (thwarted); A hand counter -1.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
@@ -81,17 +82,17 @@ Cleanup:
 - Express Stop the game before proceeding to any other case.
 
 Visibility Checks
-- The identity of the stolen card is visible only to A; others see a generic FD card in A’s herd.
+- The identity of the stolen card is visible only to A; others see a generic FD card in A’s herd and do not receive the stolen card type in notifications.
 - Refresh maintains owner-only identity visibility for stolen card.
 
 Case Checklist
-- [ ] [CN1 — Truthful, unchallenged, normal steal](#cn1)
-- [ ] [CN2 — Truthful, unchallenged, ineffective-against-itself](#cn2)
-- [ ] [CN3 — Truthful, challenged and challenge fails](#cn3)
-- [ ] [CN4 — Bluff, unchallenged](#cn4)
-- [ ] [CN5 — Bluff, challenged and challenge succeeds](#cn5)
-- [ ] [CN6 — Defender intercepts with Laser Pointer from hand](#cn6)
-- [ ] [CN7 — Interception claim challenged](#cn7)
+- [x] [CN1 — Truthful, unchallenged, normal steal](#cn1)
+- [x] [CN2 — Truthful, unchallenged, ineffective-against-itself](#cn2)
+- [x] [CN3 — Truthful, challenged and challenge fails](#cn3)
+- [x] [CN4 — Bluff, unchallenged](#cn4)
+- [x] [CN5 — Bluff, challenged and challenge succeeds](#cn5)
+- [x] [CN6 — Defender intercepts with Laser Pointer from hand](#cn6)
+- [x] [CN7 — Interception claim challenged](#cn7)
 
 Case Index (JSON)
 ```

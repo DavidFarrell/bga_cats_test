@@ -1,0 +1,165 @@
+# Animal Control & Laser Pointer — Implementation Plan (Phased TODO)
+
+Scope
+- Server: AC/LP logic in `src/modules/php/Game.php`, state routing in `src/states.inc.php`.
+- Client: effect selection gating and minor UX in `src/herdingcats.js`.
+- Data model: Herd persistence in globals, privacy on reconnect.
+- Notifications: `herdUpdate`, `cardRemoved`, `discardUpdate`, `interceptChallengeResult`.
+
+Card Types
+- 1: Kitten, 2: Show Cat, 3: Alley Cat, 4: Catnip, 5: Animal Control, 6: Laser Pointer
+
+Acceptance Criteria (map)
+- AN1–AN8 from spec; each phase lists which AN it unlocks/affects.
+
+---
+
+Phase 1 — Herd Data Model & Helpers (Server)
+- Goals:
+  - Persist herds in `$this->globals->get('herds')` with shape `{ [pid]: { face_down:[{id,type}], face_up:[{id,type}] } }`.
+  - Store actual types only; face-down types never leak in public payloads.
+  - Indexing: face-down indexing is 1-based in UI order and stable on insert/remove.
+- Server tasks:
+  - Add helpers in `Game.php`:
+    - `getHerds()/setHerds()`.
+    - `addHerdCard(pid,id,type,faceUp=false)` → notify `herdUpdate { player_id, visible:false|true, card:{ id[,type] } }`.
+    - `removeHerdCard(pid,id)` → returns `{ type, faceUp }`; notify `cardRemoved { player_id, card_id, from_zone:'herd_down'|'herd_up' }`.
+    - `flipHerdCardUp(pid,id)` → `cardRemoved('herd_down')` then `herdUpdate(visible:true,{id,type})`.
+    - `countFaceDownHerd(pid)`.
+    - `herdHasLP(pid)`.
+    - `removeOneLaserPointer(pid)` → prefer FU then FD; notify removal and `discardUpdate` with type 6.
+    - `getHerdSlotByIndex(pid, index)` → 1-based FD lookup.
+  - Update `getAllDatas()` to populate `herds`:
+    - `face_down: [ { id } ]` (ids only); `face_up: [ { id, type } ]`.
+    - Keep `discards` as-is; preserve `handCounts`/order.
+- Notifications:
+  - Ensure public payloads never include FD types; FU types are public.
+- Affects: AN1, AN2, AN6–AN8 (data foundation & privacy).
+- Exit criteria:
+  - Debug route can add/remove/flip herd entries with correct notifications and no FD leaks via `getAllDatas()`.
+
+Phase 2 — Effect Selection Args & Client Gating
+- Goals:
+  - Provide zone-aware selection args and block AC selection when no FD herd.
+- Server tasks (Game.php):
+  - Update `argEffectSelectCommon()` to include:
+    - `zone: 'hand'|'herd'` from `G_TARGET_ZONE` (1=hand, 2=herd).
+    - `defender_id` from `G_TARGET_PLAYER`.
+    - `fd_count` when `zone==='herd'` via `countFaceDownHerd(defender)`.
+    - Maintain `challengers: [{ player_id, hand_count|fd_count }]` for UI reuse.
+  - Guard selection server-side when `zone==='herd' && fd_count===0`.
+- Client tasks (herdingcats.js):
+  - `onUpdateActionButtons('animalControlEffectSelect')` uses `args.zone` and `args.fd_count`; call `renderPenaltyHand(fd_count, ...)`.
+  - When `fd_count===0`, render disabled/no-op UI with message “No face-down herd cards”.
+  - Optional: in `onEnteringState_selectPenalty` and `showPenaltySelection`, highlight defender’s FD herd when `zone==='herd'` (no new click bindings).
+- Affects: AN8; enables later AN1–AN7 flows to target FD.
+- Exit criteria:
+  - UI shows proper count and disables AC selection at 0 FD; server rejects attempts.
+
+Phase 3 — Intercept Truth & Challenge (Server)
+- Goals:
+  - Implement intercept declaration + challenge with zone-aware truth conditions and result payloads.
+- Server tasks (Game.php):
+  - Truth source:
+    - `zone==='hand'`: truthful iff presented card’s actual type is LP (6).
+    - `zone==='herd'`: truthful iff `herdHasLP(defender)` is true (ignore presented id).
+  - Store intercept globals: `G_INTERCEPT_BY`, `G_INTERCEPT_ZONE`, `G_INTERCEPT_CARD`.
+  - `stResolveInterceptChallenge`:
+    - Build `interceptChallengeResult` payloads:
+      - Hand: `{ defender_id, challenger_id, zone:'hand', presented_card_id, was_bluffing }`.
+      - Herd: `{ defender_id, challenger_id, zone:'herd', presented_card_id:null, presented_slot_index:<idx>, was_bluffing }`.
+    - Truthful challenged → route defender to blind penalty state 76, then continue.
+    - Bluff hand → remove presented from defender hand; `cardRemoved('hand')`, `discardUpdate(actual)`, handCountUpdate; clear intercept; continue original reveal.
+    - Bluff herd → no herd removal; clear intercept; continue original reveal.
+- Affects: AN3, AN5, AN7.
+- Exit criteria:
+  - Notifications match shapes; truth table verified; penalty state triggers only for truthful.
+
+Phase 4 — Intercept Substitution for AC
+- Goals:
+  - Apply LP substitution when AC is being intercepted truthfully (usually from herd).
+- Server tasks (Game.php):
+  - `applyInterceptSubstitution('herd', defender, ...)` when declared is AC (5):
+    - Call `removeOneLaserPointer(defender)` (prefer FU else FD) → notify `cardRemoved` (if from herd) and `discardUpdate { id,type:6 }`.
+    - Do not reveal selected FD slot; it remains hidden.
+    - Clear `G_INTERCEPT_*` after substitution.
+- Affects: AN6 (unchallenged truthful), AN7 (challenged truthful then substitution).
+- Exit criteria:
+  - LP is removed/discarded with correct ordering; selected slot stays hidden.
+
+Phase 5 — AC Reveal & Resolve (Server)
+- Goals:
+  - Implement AC’s herd reveal/ineffective/normal removal sequencing.
+- Server tasks (Game.php, `stRevealAndResolve()` AC branch):
+  - If `G_INTERCEPT_BY != 0` (unchallenged truthful), skip reveal; substitution already applied → `nextState('effectResolved')`.
+  - Else reveal FD slot by `G_SELECTED_SLOT_INDEX` from herd store:
+    - If actual type == AC (5): ineffective vs itself → `cardRemoved('herd_down')` then `herdUpdate({visible:true, card:{id,type:5}})`; set `G_EFFECT_INEFFECTIVE=1`.
+    - Else normal remove → `cardRemoved('herd_down')` then `discardUpdate({id,type})`.
+- Affects: AN1, AN2, AN4, AN7.
+- Exit criteria:
+  - Correct flip ordering; ineffective flag set only for AC vs AC.
+
+Phase 6 — Played Card Placement (Server)
+- Goals:
+  - Place attacker’s played card correctly post-resolution.
+- Server tasks (Game.php, `stAddPlayedCardToHerd()`):
+  - If `G_EFFECT_INEFFECTIVE==1`: discard played card face up with its actual type; do not add to herd.
+  - Else: add played to attacker’s herd face down; notify `herdUpdate { visible:false, card:{ id } }`.
+  - Always clear `G_INTERCEPT_*` and `G_SELECTED_SLOT_INDEX`.
+- Ordering guarantees:
+  - No `herdUpdate` for the played card until intercept fully resolved.
+- Affects: AN1, AN2, AN4.
+- Exit criteria:
+  - Observed notification order matches spec; no early herd add.
+
+Phase 7 — Notifications & Privacy Consistency
+- Goals:
+  - Ensure consistent payloads and privacy across all flows.
+- Server tasks:
+  - Standardize `herdUpdate`, `cardRemoved`, `discardUpdate`, `interceptChallengeResult` shapes per spec.
+  - Update any remaining callers to use helpers and not bypass privacy.
+  - Confirm Catnip consistency: on normal steal completion, `addHerdCard(actor, stolenId, stolenType, false)`; public `cardStolen` id-only and private `cardStolenPrivate` with type.
+- Affects: All ANs; especially AN8.
+- Exit criteria:
+  - No FD type leaks in public notifications or `getAllDatas()`.
+
+Phase 8 — Client UX Polish (Optional Nice-to-Have)
+- Goals:
+  - Visual emphasis for herd targeting and clearer empty-state messaging.
+- Client tasks (herdingcats.js):
+  - In `onEnteringState_selectPenalty` and `showPenaltySelection`, when `zone==='herd'`, highlight defender’s FD herd container; no new click bindings.
+  - Ensure counters update only for hand changes; herd changes do not affect hand counts.
+- Affects: UX/supporting AN flows.
+- Exit criteria:
+  - Clean cues and no accidental click paths when `fd_count===0`.
+
+Phase 9 — E2E Tests (AN1–AN8)
+- Prereqs:
+  - Deploy with `./deploy.sh --watch` or `./deploy.sh` after changes.
+  - Use Studio domain and fresh table for each scenario.
+- Runner flow per case:
+  - Always: Lobby → Create → Express start → open second tab via “see more”.
+  - K patterns for intercept windows: actor declares; switch to defender tab to challenge/pass; return to actor.
+- Assertions:
+  - Notifications: `challengeResult`/`interceptChallengeResult` include `was_bluffing`, declared/actual types; herd flips use two-step ordering.
+  - No `herdUpdate` for played card until intercept resolved.
+  - Counters: `#hc_hand_count_<playerId>` reflect only hand changes.
+- Cleanup:
+  - Express stop after each scenario; close tabs.
+- Coverage mapping:
+  - AN1 Normal remove; AN2 Ineffective vs AC; AN3 Truthful challenged; AN4 Bluff unchallenged treat-as-AC; AN5 Bluff challenged cancel; AN6 Intercept unchallenged; AN7 Intercept challenged; AN8 Gates/privacy.
+
+Phase 10 — Documentation & Small Fixes
+- Update inline comments for helpers and states; keep consistent with codebase style.
+- Note any incidental TODOs found during implementation/testing.
+
+---
+
+Proposed First Phase to Implement
+- Start with Phase 1: Herd Data Model & Helpers and `getAllDatas()` privacy.
+  - Rationale: foundational for AC, intercept truth (herdHasLP), selection gating (fd_count), reveal/flip, and end-of-turn placement. Minimizes rework and enables incremental server/client wiring in subsequent phases.
+  - Deliverable: helper methods with unit-level behavior verified via debug calls and log notifications; updated `getAllDatas()` returning FD ids only and FU identities.
+
+Suggested Next After Phase 1
+- Phase 2 (args + client gating) to hook up herd counts to UI, then Phase 3/4 (intercept truth + substitution) to unlock core AC flows.
+

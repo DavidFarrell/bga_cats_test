@@ -115,7 +115,9 @@ $machinestates = [
         ])
         ->transitions([
             'nextPlayer' => 95, // Assuming 95 is the state for next player/end of turn
-            'penaltyApplied' => 50,  // Default path (e.g., after failed challenge)
+            // After truthful penalty on targeted effects, proceed to effect selection,
+            // then to intercept via router 49 (stPrepareInterceptDeclare)
+            'penaltyApplied' => 52,
             'toResolve' => 80,       // Used when this state resolves the main effect directly
             'zombie' => 80,  // Handle zombie players
         ])
@@ -256,7 +258,8 @@ $machinestates = [
         ->action('stResolveInterceptChallenge')
         ->transitions([
             'interceptBluffCaught' => 75,     // Defender was bluffing about Laser Pointer
-            'interceptChallengeFailed' => 80, // Defender really had Laser Pointer
+            'interceptChallengeFailed' => 80, // Defender really had Laser Pointer (no challenger)
+            'interceptTruthPenalty' => 76,    // Defender truthful and a challenger exists → defender selects a blind penalty
             'interceptGoToResolve' => 80,     // Minimal path
             'interceptSubstitutionApplied' => 90,
         ])
@@ -273,6 +276,22 @@ $machinestates = [
         ->transitions([
             'interceptPenaltyApplied' => 80,
             'zombie' => 80,  // Handle zombie players
+        ])
+        ->build(),
+
+    // Truthful intercept: challenger discards a blind card selected by the defender
+    76 => GameStateBuilder::create()
+        ->name('interceptTruthfulPenalty')
+        ->description(clienttranslate('${defender} may discard one card from ${challenger}\'s hand'))
+        ->descriptionmyturn(clienttranslate('Select one card from the challenger\'s hand to discard'))
+        ->type(StateType::ACTIVE_PLAYER)
+        ->args('argInterceptTruthfulPenalty')
+        ->possibleactions([
+            'actSelectBlindFromChallenger'
+        ])
+        ->transitions([
+            'penaltyApplied' => 80,
+            'zombie' => 80,
         ])
         ->build(),
 

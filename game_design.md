@@ -129,12 +129,12 @@ All cards are played by declaration. The physical card used becomes the declared
 	•	Effect: reveal the selected herd card.
 	•	If it is Animal Control: ineffective. The revealed card stays face-up in their herd and is protected. Your played Animal Control is discarded face-up.
 	•	Otherwise, discard that card from their herd. You place your Animal Control to your herd.
-	3.	Catnip
-	•	Value in herd: 1.
-	•	Target: choose one opponent’s hand.
-	•	Effect: choose a hidden slot from that hand. Reveal it.
-	•	If it is Catnip: ineffective. Defender keeps it. Your played Catnip is discarded face-up.
-	•	Otherwise, move the revealed card face-down into your herd. Only you may see its identity in the UI. You also place your Catnip to your herd.
+		3.	Catnip
+		•	Value in herd: 1.
+		•	Target: choose one opponent’s hand.
+		•	Effect: choose a hidden slot from that hand. Reveal the selected card to the attacker only; to all other players it remains hidden, unless the selected card is Catnip (see ineffective case below).
+		•	If it is Catnip: ineffective. Reveal publicly; defender keeps it (return to hand). Your played Catnip is discarded face-up.
+		•	Otherwise, move the revealed card face-down into your herd. Only you (the attacker) may see its identity in the UI. You also place your Catnip to your herd.
 	4.	Kitten
 	•	Value in herd: 2.
 	•	Target: none.
@@ -198,8 +198,8 @@ For targeted effects (Alley Cat, Catnip, Animal Control):
 	•	If herd was targeted, defender may declare Laser Pointer from herd.
 		•	Laser Pointer declaration itself can be challenged (single challenger, first-come). Resolve that challenge before the attack proceeds.
 		•	If a Laser Pointer interception stands, resolve by substitution per §5.2 without revealing the selected card.
-		•	If no interception or the interception failed:
-		•	Reveal the selected card and check ineffective-against-itself.
+			•	If no interception or the interception failed:
+			•	Reveal the selected card and check ineffective-against-itself. On Catnip, this reveal is attacker-only; if (and only if) the selected card is Catnip, reveal publicly (ineffective).
 		•	Apply effect accordingly.
 			•	Attacker’s played card goes to herd face-down, unless ineffective-against-itself triggered or the declaration was successfully challenged.
 

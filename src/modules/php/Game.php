@@ -679,18 +679,35 @@ class Game extends \Bga\GameFramework\Table
                 $this->setHandList($defender, $list);
             }
         } elseif ($decl === 4) {
-            // Catnip: move defender LP from hand to actor's herd-FD; no discardUpdate
+            // Catnip: treat interception as a steal of the presented card from defender's hand.
+            // Publicly it is id-only; privately the attacker learns the actual type of the presented card
+            // (which may or may not be a real Laser Pointer if no one challenged).
             if ($zone === 'hand') {
-                $this->notify->all('cardRemoved', '', [ 'player_id' => $defender, 'card_id' => $lpCardId, 'from_zone' => 'hand' ]);
-                $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
-                    'player_id' => $actor,
-                    'player_name' => $this->getPlayerNameById($actor),
-                    'card' => [ 'id' => $lpCardId, 'type' => 6 ],
-                    'visible' => false,
-                ]);
-                $counts = $this->adjustHandCount($defender, -1);
-                $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
+                // Determine actual type of the presented card id (default to LP for safety)
+                $dtype = 6;
                 $list = $this->getHandList($defender);
+                foreach ($list as $i => $c) {
+                    if ((int)$c['id'] === $lpCardId) {
+                        $dtype = (int)($c['type'] ?? 6);
+                        break;
+                    }
+                }
+                $this->notify->all('cardRemoved', '', [ 'player_id' => $defender, 'card_id' => $lpCardId, 'from_zone' => 'hand' ]);
+                $this->notify->all('cardStolen', '', [
+                    'from_player_id' => $defender,
+                    'to_player_id' => $actor,
+                    'card' => [ 'id' => $lpCardId ],
+                    'hand_counts' => $this->adjustHandCount($defender, -1)
+                ]);
+                $this->notifyPlayer($actor, 'cardStolenPrivate', '', [
+                    'from_player_id' => $defender,
+                    'to_player_id' => $actor,
+                    'card' => [ 'id' => $lpCardId, 'type' => $dtype ]
+                ]);
+                // Stats: Catnip steal via intercept substitution
+                $this->incStat(1, 'cards_stolen_by_catnip', $actor);
+                $this->incStat(1, 'cards_lost_to_catnip', $defender);
+                $this->incStat(1, 'cards_stolen_total');
                 foreach ($list as $i => $c) { if ((int)$c['id'] === $lpCardId) { array_splice($list, $i, 1); break; } }
                 $this->setHandList($defender, $list);
             }
@@ -806,26 +823,14 @@ class Game extends \Bga\GameFramework\Table
         }
 
         if ($truth) {
-            // Apply substitution outcome and (optional) challenger penalty
+            // Truthful intercept
             if ($challenger !== 0) {
-                // Challenger discards a blind card (random in dummy mode)
-                $victim = $challenger;
-                $vhand = $this->getHandList($victim);
-                if (count($vhand) > 0) {
-                    $pick = $vhand[bga_rand(0, count($vhand) - 1)];
-                    $vid = (int)$pick['id'];
-                    $vtype = (int)($pick['type'] ?? 0);
-                    $this->notify->all('cardRemoved', '', [ 'player_id' => $victim, 'card_id' => $vid, 'from_zone' => 'hand' ]);
-                    $this->notify->all('discardUpdate', '', [ 'player_id' => $victim, 'card' => [ 'id' => $vid, 'type' => $vtype ] ]);
-                    $counts = $this->adjustHandCount($victim, -1);
-                    $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
-                    // Update dummy order
-                    $list = $this->getHandList($victim);
-                    foreach ($list as $i => $c) { if ((int)$c['id'] === $vid) { array_splice($list, $i, 1); break; } }
-                    $this->setHandList($victim, $list);
-                }
+                // Let defender select a blind penalty from the challenger
+                $this->gamestate->changeActivePlayer($defender);
+                $this->gamestate->nextState('interceptTruthPenalty');
+                return;
             }
-
+            // No challenger → apply substitution immediately
             $this->applyInterceptSubstitution($zone, $defender, $cardId);
             $this->gamestate->nextState('interceptSubstitutionApplied');
         } else {
@@ -856,6 +861,22 @@ class Game extends \Bga\GameFramework\Table
             // Resume original effect with reveal
             $this->gamestate->nextState('interceptGoToResolve');
         }
+    }
+
+    public function argInterceptTruthfulPenalty(): array
+    {
+        $defender = (int)$this->getGameStateValue(self::G_INTERCEPT_BY);
+        $challenger = (int)$this->getGameStateValue(self::G_CHALLENGER);
+        $hand = $this->getHandList($challenger);
+        return [
+            'defender_id' => $defender,
+            'defender' => $this->getPlayerNameById($defender),
+            'challenger_id' => $challenger,
+            'challenger' => $this->getPlayerNameById($challenger),
+            'target_player_id' => $challenger,
+            'hand_count' => count($hand),
+            'challengers' => [[ 'player_id' => $challenger, 'hand_count' => count($hand) ]],
+        ];
     }
 
     public function stRevealAndResolve(): void
@@ -938,13 +959,41 @@ class Game extends \Bga\GameFramework\Table
                         $card = $hand[$idx];
                         $ctype = (int)($card['type'] ?? 0);
                         $cid = (int)$card['id'];
-                        // Remove from defender's hand and add to attacker's herd face-down
-                        $this->notify->all('cardRemoved', '', [ 'player_id' => $targetPlayer, 'card_id' => $cid, 'from_zone' => 'hand' ]);
-                        $this->notify->all('cardStolen', '', [ 'from_player_id' => $targetPlayer, 'to_player_id' => $actor, 'card' => [ 'id' => $cid, 'type' => $ctype ], 'hand_counts' => $this->adjustHandCount($targetPlayer, -1) ]);
-                        // Update dummy list
-                        $list = $this->getHandList($targetPlayer);
-                        array_splice($list, $idx, 1);
-                        $this->setHandList($targetPlayer, $list);
+                        if ($ctype === 4) {
+                            // Ineffective against itself: publicly reveal defender's Catnip; do not remove; attacker discards their played card later
+                            $this->notify->all('catnipIneffective', clienttranslate('Ineffective: ${target_name}\'s card is Catnip and returns to hand'), [
+                                'player_id'   => $actor,
+                                'player_name' => $this->getPlayerNameById($actor),
+                                'target_id'   => $targetPlayer,
+                                'target_name' => $this->getPlayerNameById($targetPlayer),
+                                'card'        => [ 'id' => $cid, 'type' => $ctype ],
+                                'selected_slot_index' => $selectedIdx,
+                            ]);
+                            $this->incStat(1, 'ineffective_attacks_due_to_matching', $actor);
+                            $this->setGameStateValue(self::G_EFFECT_INEFFECTIVE, 1);
+                        } else {
+                            // Normal steal: remove from defender, publish id-only publicly, send type privately to attacker
+                            $this->notify->all('cardRemoved', '', [ 'player_id' => $targetPlayer, 'card_id' => $cid, 'from_zone' => 'hand' ]);
+                            $this->notify->all('cardStolen', '', [
+                                'from_player_id' => $targetPlayer,
+                                'to_player_id' => $actor,
+                                'card' => [ 'id' => $cid ],
+                                'hand_counts' => $this->adjustHandCount($targetPlayer, -1)
+                            ]);
+                            $this->notifyPlayer($actor, 'cardStolenPrivate', '', [
+                                'from_player_id' => $targetPlayer,
+                                'to_player_id' => $actor,
+                                'card' => [ 'id' => $cid, 'type' => $ctype ]
+                            ]);
+                            // Stats: Catnip steal (normal)
+                            $this->incStat(1, 'cards_stolen_by_catnip', $actor);
+                            $this->incStat(1, 'cards_lost_to_catnip', $targetPlayer);
+                            $this->incStat(1, 'cards_stolen_total');
+                            // Update dummy list
+                            $list = $this->getHandList($targetPlayer);
+                            array_splice($list, $idx, 1);
+                            $this->setHandList($targetPlayer, $list);
+                        }
                     }
                 }
                 break;
@@ -985,10 +1034,11 @@ class Game extends \Bga\GameFramework\Table
                 'card' => [ 'id' => $card, 'type' => $actual ],
             ]);
         } else {
+            // For face-down herd entries, do not include the type in public payloads
             $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
                 'player_id' => $actor,
                 'player_name' => $this->getPlayerNameById($actor),
-                'card' => [ 'id' => $card, 'type' => $decl ],
+                'card' => [ 'id' => $card ],
                 'visible' => false,
             ]);
         }

@@ -43,6 +43,8 @@ function (dojo, declare) {
             this.selectedCard = null;
             this.currentDeclaration = null;
             this.targetSelectionActive = false;
+            // Owner-only known identities for stolen face-down herd cards
+            this.knownFD = {};
             
             // Card type names for UI (plain strings; translate at render time)
             this.cardTypeNames = {
@@ -441,6 +443,9 @@ function (dojo, declare) {
                     break;
                 case 'attackerSelectTruthfulPenalty':
                 case 'alleyCatEffectSelect':
+                case 'catnipEffectSelect':
+                case 'interceptTruthfulPenalty':
+                case 'animalControlEffectSelect':
                 case 'challengerSelectBluffPenalty':
                     var ph = $('hc_penalty_hand'); if (ph) dojo.destroy(ph);
                     break;
@@ -486,6 +491,20 @@ function (dojo, declare) {
                         this._penaltyArgs = {
                             target_player_id: challenger.player_id
                         };
+                        this.renderPenaltyHand(challenger.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
+                    }
+                    break;
+                case 'interceptTruthfulPenalty':
+                    if (args && args.challengers && args.challengers.length > 0) {
+                        const challenger = args.challengers[0];
+                        this._penaltyArgs = { target_player_id: challenger.player_id };
+                        this.renderPenaltyHand(challenger.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
+                    }
+                    break;
+                case 'interceptTruthfulPenalty':
+                    if (args && args.challengers && args.challengers.length > 0) {
+                        const challenger = args.challengers[0];
+                        this._penaltyArgs = { target_player_id: challenger.player_id };
                         this.renderPenaltyHand(challenger.hand_count || 0, (i)=>this.onPickTruthPenalty(i));
                     }
                     break;
@@ -1172,9 +1191,77 @@ function (dojo, declare) {
             
             // Add to destination herd (face-down)
             this.playerHerds[toPlayerId].faceDown.addToStockWithId(0, card.id);
+            // If we are the owner and we know the identity privately, add an owner-only label/tooltip
+            if (parseInt(toPlayerId) === parseInt(this.player_id)) {
+                this._maybeLabelStolenFDCard(toPlayerId, card.id);
+            }
             
             // Update hand counts
             this.updateHandCounts(args.hand_counts);
+        },
+
+        notif_cardStolenPrivate: async function(args) {
+            try {
+                const toPlayerId = args.to_player_id;
+                const card = args.card || {};
+                if (parseInt(toPlayerId) === parseInt(this.player_id) && card && card.id !== undefined && card.type !== undefined) {
+                    // Record owner-only identity for tooltip/labels
+                    this.knownFD[String(card.id)] = parseInt(card.type);
+                    // Attempt to label immediately if the DOM element exists already
+                    this._maybeLabelStolenFDCard(toPlayerId, card.id);
+                }
+            } catch (e) {
+                console.warn('notif_cardStolenPrivate error', e);
+            }
+        },
+
+        notif_catnipIneffective: async function(args) {
+            console.log('notif_catnipIneffective', args);
+            const target = args && (args.target_name || args.target_id);
+            this.showMessage(dojo.string.substitute(_("Ineffective: ${target} reveals a Catnip (returns to hand)"), {
+                target: target || _('target')
+            }), 'info');
+        },
+        
+        // Owner-only helper: label a stolen face-down herd card (only on owner client)
+        _maybeLabelStolenFDCard: function(playerId, cardId) {
+            try {
+                const cid = String(cardId);
+                const type = this.knownFD && this.knownFD[cid];
+                if (!type) {
+                    // Private identity may arrive slightly later; retry shortly
+                    setTimeout(() => {
+                        try { this._maybeLabelStolenFDCard(playerId, cardId); } catch(e) {}
+                    }, 250);
+                    return;
+                }
+                const label = (this.cardTypeNames && this.cardTypeNames[type]) ? this.cardTypeNames[type] : String(type);
+                const domId = 'hc_herd_face_down_' + playerId + '_item_' + cardId;
+                const el = $(domId) || (function(){
+                    // Fallback: look for a stockitem whose id contains the card id
+                    const container = $('hc_herd_face_down_' + playerId);
+                    if (!container) return null;
+                    const nodes = container.querySelectorAll('.stockitem');
+                    for (let i=0;i<nodes.length;i++) {
+                        const n = nodes[i];
+                        if (n && n.id && String(n.id).indexOf(String(cardId)) !== -1) return n;
+                    }
+                    return null;
+                })();
+                if (!el) return;
+                // Add a small badge; idempotent
+                if (!el.querySelector('.hc_fd_badge')) {
+                    const badge = dojo.create('div', { className: 'hc_fd_badge', innerHTML: label }, el);
+                } else {
+                    el.querySelector('.hc_fd_badge').innerHTML = label;
+                }
+                // Also provide a tooltip for accessibility
+                try { this.addTooltip(el.id, _('Stolen identity'), label, 500); } catch(e) {
+                    try { el.setAttribute('title', label); } catch(_) {}
+                }
+            } catch (e) {
+                console.warn('label FD card failed', e);
+            }
         },
 
         notif_effectResolved: async function( args )

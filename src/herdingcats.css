@@ -82,6 +82,7 @@
     padding: 10px;
     background: rgba(255,255,255,0.5);
     border-radius: 5px;
+    position: relative; /* anchor ebg.stock absolute items */
 }
 
 /* Control Panel */
@@ -195,6 +196,13 @@
     margin-top: 10px;
 }
 
+/* Ensure ebg.stock children are positioned relative to their host containers */
+.hc_herd_face_down,
+.hc_herd_face_up,
+.hc_discard_pile {
+    position: relative;
+}
+
 .hc_discard_pile {
     background: rgba(255,255,255,0.7);
     border: 1px dashed #ccc;
@@ -226,6 +234,20 @@
     background-size: cover !important;
     background-position: center center !important;
     background-repeat: no-repeat !important;
+    /* do NOT override position here; ebg.stock uses absolute */
+}
+
+/* Small owner-only label for stolen face-down herd cards (rendered only on the owner's client) */
+.stockitem .hc_fd_badge {
+    position: absolute;
+    left: 4px;
+    bottom: 4px;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    padding: 1px 4px;
+    font-size: 10px;
+    border-radius: 3px;
+    pointer-events: none;
 }
 
 /* ======================
