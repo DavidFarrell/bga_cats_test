@@ -45,6 +45,9 @@ function (dojo, declare) {
             this.targetSelectionActive = false;
             // Owner-only known identities for stolen face-down herd cards
             this.knownFD = {};
+            // Intercept UI selections
+            this._interceptZone = null;
+            this._selectedInterceptHerdCardId = null;
             
             // Card type names for UI (plain strings; translate at render time)
             this.cardTypeNames = {
@@ -102,7 +105,19 @@ function (dojo, declare) {
             
             // Setup player boards
             this.setupPlayerBoards(gamedatas);
-            
+
+            // Merge owner-known FD identities from server on reconnect
+            try {
+                if (gamedatas.known_identities && typeof gamedatas.known_identities === 'object') {
+                    this.knownFD = Object.assign({}, this.knownFD || {}, gamedatas.known_identities || {});
+                    // Attempt to apply labels for current player's existing FD herd cards
+                    const myId = parseInt(this.player_id);
+                    if (gamedatas.herds && gamedatas.herds[myId] && Array.isArray(gamedatas.herds[myId].face_down)) {
+                        gamedatas.herds[myId].face_down.forEach(c => this._maybeLabelStolenFDCard(myId, c.id));
+                    }
+                }
+            } catch(e) { console.warn('known_identities init failed', e); }
+
             // Initialize counters
             this.setupCounters(gamedatas);
             
@@ -368,6 +383,8 @@ function (dojo, declare) {
         onEnteringState_interceptDeclare: function(args) {
             if (this.isCurrentPlayerActive()) {
                 this.updateActionPrompts('interceptDeclare', args);
+                this._interceptZone = args && args.zone ? args.zone : null;
+                this._selectedInterceptHerdCardId = null;
                 if (this._defenderPreview && parseInt(args && args.defender_id) === parseInt(this.player_id)) {
                     const idx = this._defenderPreview.selected_slot_index;
                     const type = this._defenderPreview.selected_slot_type;
@@ -384,12 +401,33 @@ function (dojo, declare) {
                             if (host && host.children && host.children.length >= idx) {
                                 dojo.addClass(host.children[idx - 1], 'hc_pulse_slot');
                             }
+                        } else if (this._defenderPreview.zone === 'herd') {
+                            // Prefer highlight by card id if provided
+                            const cid = this._defenderPreview.selected_slot_card_id;
+                            let el = null;
+                            if (cid !== undefined && cid !== null) {
+                                const domId = 'hc_herd_face_down_' + this.player_id + '_item_' + cid;
+                                el = $(domId);
+                            }
+                            if (!el) {
+                                // Fallback: highlight by index within herd FD container
+                                const host = $('hc_herd_face_down_' + this.player_id);
+                                if (host && host.children && host.children.length >= idx) {
+                                    el = host.children[idx - 1];
+                                }
+                            }
+                            if (el) dojo.addClass(el, 'hc_pulse_slot');
                         }
                     } catch(e) { console.warn('highlight failed', e); }
                 }
                 // Allow the defender to select a Laser Pointer card from hand
-                if (this.playerHand && this.playerHand.setSelectionMode) {
-                    this.playerHand.setSelectionMode(1);
+                if ((this._interceptZone || (this._defenderPreview && this._defenderPreview.zone)) === 'hand') {
+                    if (this.playerHand && this.playerHand.setSelectionMode) {
+                        this.playerHand.setSelectionMode(1);
+                    }
+                } else {
+                    // Render a picker of our face-down herd in the yellow area
+                    this.renderHerdInterceptPicker();
                 }
             }
         },
@@ -422,6 +460,7 @@ function (dojo, declare) {
                     break;
                 case 'interceptDeclare':
                     try { dojo.query('.hc_pulse_slot').removeClass('hc_pulse_slot'); } catch(e) {}
+                    this.destroyHerdInterceptPicker();
                     break;
                 case 'interceptDeclare':
                     // Disable hand selection after intercept window
@@ -475,10 +514,10 @@ function (dojo, declare) {
                         }
                         break;
                         
-                    case 'interceptDeclare':
-                        this.addActionButton('intercept_btn', _('Intercept with Laser Pointer'), 'onDeclareIntercept');
-                        this.addActionButton('pass_intercept_btn', _('Allow Attack'), 'onPassIntercept', null, false, 'gray');
-                        break;
+                case 'interceptDeclare':
+                    this.addActionButton('intercept_btn', _('Intercept with Laser Pointer'), 'onDeclareIntercept');
+                    this.addActionButton('pass_intercept_btn', _('Allow Attack'), 'onPassIntercept', null, false, 'gray');
+                    break;
                         
                 case 'interceptChallengeWindow':
                     this.addActionButton('challenge_intercept_btn', _('Challenge Laser Pointer'), 'onChallengeIntercept');
@@ -523,10 +562,27 @@ function (dojo, declare) {
                     }
                     break;
                 case 'animalControlEffectSelect':
-                    if (args && args.challengers && args.challengers.length > 0) {
-                        const target = args.challengers[0];
-                        this._penaltyArgs = { target_player_id: target.player_id };
-                        this.renderPenaltyHand(target.hand_count || 1, (i)=>this.onPickTruthPenalty(i));
+                    if (args) {
+                        let defenderId = args.defender_id;
+                        if ((!defenderId || isNaN(parseInt(defenderId))) && args.challengers && args.challengers.length > 0) {
+                            defenderId = args.challengers[0].player_id;
+                        }
+                        this._penaltyArgs = { target_player_id: defenderId };
+
+                        const zone = args.zone || 'herd';
+                        if (zone === 'herd') {
+                            const fdCount = parseInt(args.fd_count || (args.challengers && args.challengers[0] ? args.challengers[0].fd_count : 0)) || 0;
+                            if (fdCount <= 0) {
+                                this.showMessage(_('No face-down herd cards'), 'info');
+                                // Render empty/disabled UI to communicate no-op
+                                this.renderPenaltyHand(0, ()=>{});
+                            } else {
+                                this.renderPenaltyHand(fdCount, (i)=>this.onPickTruthPenalty(i));
+                            }
+                        } else {
+                            const handCount = parseInt(args.hand_count || (args.challengers && args.challengers[0] ? args.challengers[0].hand_count : 0)) || 0;
+                            this.renderPenaltyHand(handCount, (i)=>this.onPickTruthPenalty(i));
+                        }
                     }
                     break;
 
@@ -581,7 +637,11 @@ function (dojo, declare) {
                     promptText = _('Select your target.');
                     break;
                 case 'interceptDeclare':
-                    promptText = _('You are being targeted! Intercept with Laser Pointer?');
+                    if (args && args.zone === 'herd') {
+                        promptText = _('You are being targeted! Select a face-down herd card to present as Laser Pointer, then click Intercept.');
+                    } else {
+                        promptText = _('You are being targeted! Intercept with Laser Pointer?');
+                    }
                     break;
                 case 'interceptChallengeWindow':
                     promptText = _('Player claims to have Laser Pointer. Challenge?');
@@ -615,6 +675,58 @@ function (dojo, declare) {
                 if (dTypePrev === null || dTypePrev === undefined) dTypePrev = this.currentDeclaredType;
                 if (dTypePrev !== null && dTypePrev !== undefined) this.renderDeclaredPreview(dTypePrev);
             }
+        },
+
+        // Render clickable list of defender's face-down herd cards in the yellow area for herd intercept
+        renderHerdInterceptPicker: function() {
+            const promptsDiv = $('hc_action_prompts');
+            if (!promptsDiv) return;
+            this.destroyHerdInterceptPicker();
+            const pid = this.player_id;
+            const host = $('hc_herd_face_down_' + pid);
+            const picker = dojo.create('div', { id: 'hc_intercept_herd_picker', className: 'hc_intercept_picker' }, promptsDiv);
+            if (!host) {
+                picker.innerHTML = '<div style="opacity:.7">'+_('No face-down herd cards')+'</div>';
+                return;
+            }
+            const items = host.querySelectorAll('.stockitem');
+            if (!items || items.length === 0) {
+                picker.innerHTML = '<div style="opacity:.7">'+_('No face-down herd cards')+'</div>';
+                return;
+            }
+            const theme = (typeof g_gamethemeurl!=='undefined') ? g_gamethemeurl : '';
+            items.forEach(n => {
+                try {
+                    const m = String(n.id).match(/_item_(\d+)$/);
+                    const cid = m ? parseInt(m[1]) : null;
+                    if (!cid) return;
+                    const stub = dojo.create('div', { className: 'hc_stub' }, picker);
+                    const card = dojo.create('div', { className: 'hc_stub_card', style: 'background-image:url('+ theme + 'img/herding_cats_art/cardback.jpeg)' }, stub);
+                    const labelVal = this.knownFD && this.knownFD[String(cid)] ? this.cardTypeNames[this.knownFD[String(cid)]] : '?';
+                    dojo.create('div', { className: 'hc_stub_label', innerHTML: labelVal }, stub);
+                    const targetCid = this._defenderPreview && this._defenderPreview.selected_slot_card_id;
+                    const disabled = (targetCid && parseInt(targetCid) === parseInt(cid));
+                    if (disabled) dojo.addClass(stub, 'hc_stub_disabled');
+                    dojo.connect(stub, 'onclick', this, () => {
+                        if (disabled) {
+                            this.showMessage(_('You cannot present the targeted card.'), 'error');
+                            return;
+                        }
+                        this._selectedInterceptHerdCardId = cid;
+                        // Visual selection on clones
+                        dojo.query('#hc_intercept_herd_picker .hc_stub').removeClass('hc_stub_selected');
+                        dojo.addClass(stub, 'hc_stub_selected');
+                        // Highlight the real herd item briefly
+                        try { dojo.query('.hc_pulse_slot').removeClass('hc_pulse_slot'); } catch(e) {}
+                        dojo.addClass(n, 'hc_pulse_slot');
+                    });
+                } catch(e) {}
+            });
+        },
+
+        destroyHerdInterceptPicker: function() {
+            const picker = $('hc_intercept_herd_picker');
+            if (picker) dojo.destroy(picker);
         },
 
         renderDeclaredPreview: function(declaredType) {
@@ -703,12 +815,11 @@ function (dojo, declare) {
 
         showPenaltySelection: function(args) {
             // Show UI for blind card selection from opponent
-            if (args && args.target_player_id) {
-                this.highlightValidTargets([{
-                    player_id: args.target_player_id,
-                    zone: 'hand',
-                    selectable: true
-                }]);
+            if (!args) return;
+            const pid = args.target_player_id || args.defender_id || (args.challengers && args.challengers[0] && args.challengers[0].player_id);
+            const zone = args.zone || 'hand';
+            if (pid) {
+                this.highlightValidTargets([{ player_id: pid, zone: zone, selectable: true }]);
             }
         },
 
@@ -921,8 +1032,13 @@ function (dojo, declare) {
                     return;
                 }
             } else {
-                // Herd: server will validate minimally; use a placeholder id
-                cardId = 600000 + Math.floor(Math.random()*1000);
+                // Herd: require selecting one of our FD herd cards to present
+                const cid = this._selectedInterceptHerdCardId;
+                if (!cid) {
+                    this.showMessage(_('Select a face-down herd card to present, then click Intercept'), 'error');
+                    return;
+                }
+                cardId = cid;
             }
 
             this.ajaxcall(this._actionUrl("actDeclareIntercept"), {
@@ -1022,8 +1138,15 @@ function (dojo, declare) {
             this._defenderPreview = {
                 selected_slot_index: args.selected_slot_index,
                 selected_slot_type: args.selected_slot_type,
+                selected_slot_card_id: args.selected_slot_card_id,
                 zone: args.zone
             };
+            // If we are already in interceptDeclare as defender, update prompt and highlight now
+            try {
+                if (this.gamedatas.gamestate && this.gamedatas.gamestate.name === 'interceptDeclare') {
+                    this.onEnteringState_interceptDeclare({ defender_id: (args && args.target_player_id) || this.player_id });
+                }
+            } catch(e) { /* no-op */ }
         },
 
         notif_targetSlotSelected: async function(args) {
@@ -1111,17 +1234,25 @@ function (dojo, declare) {
         notif_herdUpdate: async function( args )
         {
             console.log( 'notif_herdUpdate', args );
-            
+
             const playerId = args.player_id;
             const card = args.card;
             const isVisible = args.visible;
-            
+
             if (isVisible) {
                 // Add to face-up herd
                 this.playerHerds[playerId].faceUp.addToStockWithId(card.type, card.id);
+                // If this was previously a face-down card with a label, clear any stored identity
+                if (this.knownFD && this.knownFD[String(card.id)] !== undefined) {
+                    delete this.knownFD[String(card.id)];
+                }
             } else {
                 // Add to face-down herd
                 this.playerHerds[playerId].faceDown.addToStockWithId(0, card.id);
+                // If this addition is to our herd and we already know the identity, label it
+                if (parseInt(playerId) === parseInt(this.player_id)) {
+                    this._maybeLabelStolenFDCard(playerId, card.id);
+                }
             }
         },
 
@@ -1146,6 +1277,10 @@ function (dojo, declare) {
 
             if (args.card && args.card.id !== undefined && args.card.type !== undefined) {
                 this.playerDiscards[playerId].addToStockWithId(args.card.type, args.card.id);
+                // Cleanup any known identity cache for this card id
+                if (this.knownFD && this.knownFD[String(args.card.id)] !== undefined) {
+                    delete this.knownFD[String(args.card.id)];
+                }
             }
         },
 
@@ -1161,19 +1296,35 @@ function (dojo, declare) {
         notif_cardRemoved: async function( args )
         {
             console.log( 'notif_cardRemoved', args );
-            
+
             const playerId = args.player_id;
             const cardId = args.card_id;
             const fromZone = args.from_zone;
-            
+
             // Remove card from appropriate location
             if (fromZone === 'herd_down') {
                 this.playerHerds[playerId].faceDown.removeFromStockById(cardId);
+                // Cleanup label cache for this card id if we had it
+                if (this.knownFD && this.knownFD[String(cardId)] !== undefined) {
+                    delete this.knownFD[String(cardId)];
+                }
             } else if (fromZone === 'herd_up') {
                 this.playerHerds[playerId].faceUp.removeFromStockById(cardId);
             } else if (fromZone === 'hand' && playerId == this.player_id) {
                 this.playerHand.removeFromStockById(cardId);
             }
+        },
+
+        // Private: server informs owner about a face-down herd card's true identity
+        notif_fdKnown: async function(args) {
+            try {
+                const card = args.card || {};
+                if (card && card.id !== undefined && card.type !== undefined) {
+                    this.knownFD[String(card.id)] = parseInt(card.type);
+                    // Attempt to label immediately if it's our herd card
+                    this._maybeLabelStolenFDCard(this.player_id, card.id);
+                }
+            } catch(e) { console.warn('notif_fdKnown error', e); }
         },
 
         notif_cardStolen: async function( args )
@@ -1187,13 +1338,6 @@ function (dojo, declare) {
             // Remove from source (if current player's hand)
             if (fromPlayerId == this.player_id) {
                 this.playerHand.removeFromStockById(card.id);
-            }
-            
-            // Add to destination herd (face-down)
-            this.playerHerds[toPlayerId].faceDown.addToStockWithId(0, card.id);
-            // If we are the owner and we know the identity privately, add an owner-only label/tooltip
-            if (parseInt(toPlayerId) === parseInt(this.player_id)) {
-                this._maybeLabelStolenFDCard(toPlayerId, card.id);
             }
             
             // Update hand counts
@@ -1223,7 +1367,7 @@ function (dojo, declare) {
             }), 'info');
         },
         
-        // Owner-only helper: label a stolen face-down herd card (only on owner client)
+        // Owner-only helper: label a face-down herd card (only on owner client)
         _maybeLabelStolenFDCard: function(playerId, cardId) {
             try {
                 const cid = String(cardId);
@@ -1256,7 +1400,7 @@ function (dojo, declare) {
                     el.querySelector('.hc_fd_badge').innerHTML = label;
                 }
                 // Also provide a tooltip for accessibility
-                try { this.addTooltip(el.id, _('Stolen identity'), label, 500); } catch(e) {
+                try { this.addTooltip(el.id, _('Card identity (owner-only)'), label, 500); } catch(e) {
                     try { el.setAttribute('title', label); } catch(_) {}
                 }
             } catch (e) {

@@ -250,6 +250,44 @@
     pointer-events: none;
 }
 
+/* Herd intercept picker (yellow area) */
+.hc_intercept_picker {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.hc_intercept_picker .hc_stub {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+}
+.hc_intercept_picker .hc_stub_card {
+    width: 36px;
+    height: 48px;
+    border: 2px solid #333;
+    border-radius: 6px;
+    background-size: cover;
+    background-position: center;
+}
+.hc_intercept_picker .hc_stub_label {
+    font-size: 10px;
+    background: rgba(0,0,0,.65);
+    color: #fff;
+    padding: 0 4px;
+    border-radius: 3px;
+}
+.hc_intercept_picker .hc_stub_disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.hc_intercept_picker .hc_stub_selected .hc_stub_card {
+    box-shadow: 0 0 0 3px #64b5f6;
+}
+
 /* ======================
    CARD STYLING
    ====================== */

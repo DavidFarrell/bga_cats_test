@@ -14,7 +14,7 @@ Acceptance Criteria (map)
 
 ---
 
-Phase 1 — Herd Data Model & Helpers (Server)
+Phase 1 — Herd Data Model & Helpers (Server) — Completed
 - Goals:
   - Persist herds in `$this->globals->get('herds')` with shape `{ [pid]: { face_down:[{id,type}], face_up:[{id,type}] } }`.
   - Store actual types only; face-down types never leak in public payloads.
@@ -38,7 +38,7 @@ Phase 1 — Herd Data Model & Helpers (Server)
 - Exit criteria:
   - Debug route can add/remove/flip herd entries with correct notifications and no FD leaks via `getAllDatas()`.
 
-Phase 2 — Effect Selection Args & Client Gating
+Phase 2 — Effect Selection Args & Client Gating — Completed
 - Goals:
   - Provide zone-aware selection args and block AC selection when no FD herd.
 - Server tasks (Game.php):
@@ -56,7 +56,7 @@ Phase 2 — Effect Selection Args & Client Gating
 - Exit criteria:
   - UI shows proper count and disables AC selection at 0 FD; server rejects attempts.
 
-Phase 3 — Intercept Truth & Challenge (Server)
+Phase 3 — Intercept Truth & Challenge (Server) — Completed
 - Goals:
   - Implement intercept declaration + challenge with zone-aware truth conditions and result payloads.
 - Server tasks (Game.php):
@@ -75,7 +75,7 @@ Phase 3 — Intercept Truth & Challenge (Server)
 - Exit criteria:
   - Notifications match shapes; truth table verified; penalty state triggers only for truthful.
 
-Phase 4 — Intercept Substitution for AC
+Phase 4 — Intercept Substitution for AC — Completed
 - Goals:
   - Apply LP substitution when AC is being intercepted truthfully (usually from herd).
 - Server tasks (Game.php):
@@ -87,7 +87,7 @@ Phase 4 — Intercept Substitution for AC
 - Exit criteria:
   - LP is removed/discarded with correct ordering; selected slot stays hidden.
 
-Phase 5 — AC Reveal & Resolve (Server)
+Phase 5 — AC Reveal & Resolve (Server) — Completed
 - Goals:
   - Implement AC’s herd reveal/ineffective/normal removal sequencing.
 - Server tasks (Game.php, `stRevealAndResolve()` AC branch):
@@ -99,7 +99,7 @@ Phase 5 — AC Reveal & Resolve (Server)
 - Exit criteria:
   - Correct flip ordering; ineffective flag set only for AC vs AC.
 
-Phase 6 — Played Card Placement (Server)
+Phase 6 — Played Card Placement (Server) — Completed
 - Goals:
   - Place attacker’s played card correctly post-resolution.
 - Server tasks (Game.php, `stAddPlayedCardToHerd()`):
@@ -112,7 +112,7 @@ Phase 6 — Played Card Placement (Server)
 - Exit criteria:
   - Observed notification order matches spec; no early herd add.
 
-Phase 7 — Notifications & Privacy Consistency
+Phase 7 — Notifications & Privacy Consistency — Completed
 - Goals:
   - Ensure consistent payloads and privacy across all flows.
 - Server tasks:
@@ -123,7 +123,7 @@ Phase 7 — Notifications & Privacy Consistency
 - Exit criteria:
   - No FD type leaks in public notifications or `getAllDatas()`.
 
-Phase 8 — Client UX Polish (Optional Nice-to-Have)
+Phase 8 — Client UX Polish (Optional Nice-to-Have) — Completed
 - Goals:
   - Visual emphasis for herd targeting and clearer empty-state messaging.
 - Client tasks (herdingcats.js):
@@ -133,7 +133,7 @@ Phase 8 — Client UX Polish (Optional Nice-to-Have)
 - Exit criteria:
   - Clean cues and no accidental click paths when `fd_count===0`.
 
-Phase 9 — E2E Tests (AN1–AN8)
+Phase 9 — E2E Tests (AN1–AN8) — Pending
 - Prereqs:
   - Deploy with `./deploy.sh --watch` or `./deploy.sh` after changes.
   - Use Studio domain and fresh table for each scenario.
@@ -149,7 +149,7 @@ Phase 9 — E2E Tests (AN1–AN8)
 - Coverage mapping:
   - AN1 Normal remove; AN2 Ineffective vs AC; AN3 Truthful challenged; AN4 Bluff unchallenged treat-as-AC; AN5 Bluff challenged cancel; AN6 Intercept unchallenged; AN7 Intercept challenged; AN8 Gates/privacy.
 
-Phase 10 — Documentation & Small Fixes
+Phase 10 — Documentation & Small Fixes — Pending
 - Update inline comments for helpers and states; keep consistent with codebase style.
 - Note any incidental TODOs found during implementation/testing.
 
@@ -162,4 +162,3 @@ Proposed First Phase to Implement
 
 Suggested Next After Phase 1
 - Phase 2 (args + client gating) to hook up herd counts to UI, then Phase 3/4 (intercept truth + substitution) to unlock core AC flows.
-

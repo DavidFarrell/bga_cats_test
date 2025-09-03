@@ -39,6 +39,7 @@ class Game extends \Bga\GameFramework\Table
     private const G_INTERCEPT_CARD = 'g_intercept_card'; // card id used for intercept (may be dummy when no real deck)
     // Effect selected slot index (1-based) within the defender's hand/herd for resolution
     private const G_SELECTED_SLOT_INDEX = 'g_selected_slot_index';
+    private const G_SELECTED_SLOT_CARD_ID = 'g_selected_slot_card_id';
 
     /**
      * Your global variables labels:
@@ -67,6 +68,7 @@ class Game extends \Bga\GameFramework\Table
             self::G_INTERCEPT_ZONE => 20,
             self::G_INTERCEPT_CARD => 21,
             self::G_SELECTED_SLOT_INDEX => 22,
+            self::G_SELECTED_SLOT_CARD_ID => 23,
         ]);
 
         // Initialize BGA Deck component (safe even if no real cards are used)
@@ -284,18 +286,32 @@ class Game extends \Bga\GameFramework\Table
         // Provide the current player's hand in the exact order (real or stored dummy)
         $result['hand'] = $this->getHandList($current_player_id);
 
-        // Minimal empty structures for herds/discards expected by client
+        // Herds: expose FU with ids+types; FD with ids only (privacy)
         $result['herds'] = [];
+        $store = $this->getHerds();
         foreach ($result['players'] as $pid => $_p) {
-            $result['herds'][(int)$pid] = [
-                'face_down' => [],
-                'face_up' => [],
-            ];
+            $pid = (int)$pid;
+            $entry = $store[$pid] ?? [ 'face_down' => [], 'face_up' => [] ];
+            // Map FD to id-only
+            $fd = [];
+            foreach ($entry['face_down'] as $c) {
+                $fd[] = [ 'id' => (int)$c['id'] ];
+            }
+            // Map FU to id+type (public)
+            $fu = [];
+            foreach ($entry['face_up'] as $c) {
+                $fu[] = [ 'id' => (int)$c['id'], 'type' => (int)$c['type'] ];
+            }
+            $result['herds'][$pid] = [ 'face_down' => $fd, 'face_up' => $fu ];
         }
         $result['discards'] = [];
         foreach ($result['players'] as $pid => $_p) {
             $result['discards'][(int)$pid] = [];
         }
+
+        // Owner-only: known identities for face-down herd cards (current viewer only)
+        $known = $this->getKnownMap();
+        $result['known_identities'] = isset($known[$current_player_id]) ? $known[$current_player_id] : [];
 
         return $result;
     }
@@ -433,6 +449,173 @@ class Game extends \Bga\GameFramework\Table
             $hand[(string)$cardId] = [ 'id' => $cardId, 'type' => $type, 'location_arg' => ($i + 1) ];
         }
         return $hand;
+    }
+
+    // =====================
+    // Herd persistence helpers
+    // =====================
+
+    private function getHerds(): array
+    {
+        $store = $this->globals->get('herds');
+        if (!is_array($store)) {
+            $store = [];
+            $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+            foreach ($players as $p) {
+                $store[(int)$p['id']] = [ 'face_down' => [], 'face_up' => [] ];
+            }
+            $this->globals->set('herds', $store);
+        }
+        return $store;
+    }
+
+    private function setHerds(array $store): void
+    {
+        $this->globals->set('herds', $store);
+    }
+
+    private function ensureHerdEntry(array &$store, int $playerId): void
+    {
+        if (!isset($store[$playerId]) || !is_array($store[$playerId])) {
+            $store[$playerId] = [ 'face_down' => [], 'face_up' => [] ];
+        }
+        if (!isset($store[$playerId]['face_down']) || !is_array($store[$playerId]['face_down'])) {
+            $store[$playerId]['face_down'] = [];
+        }
+        if (!isset($store[$playerId]['face_up']) || !is_array($store[$playerId]['face_up'])) {
+            $store[$playerId]['face_up'] = [];
+        }
+    }
+
+    private function addHerdCard(int $playerId, int $cardId, int $type, bool $faceUp = false): void
+    {
+        $store = $this->getHerds();
+        $this->ensureHerdEntry($store, $playerId);
+        // Remove pre-existing occurrences of the id to keep the store clean
+        $store[$playerId]['face_down'] = array_values(array_filter($store[$playerId]['face_down'], fn($c) => (int)$c['id'] !== (int)$cardId));
+        $store[$playerId]['face_up']   = array_values(array_filter($store[$playerId]['face_up'],   fn($c) => (int)$c['id'] !== (int)$cardId));
+        if ($faceUp) {
+            $store[$playerId]['face_up'][] = [ 'id' => (int)$cardId, 'type' => (int)$type ];
+        } else {
+            $store[$playerId]['face_down'][] = [ 'id' => (int)$cardId, 'type' => (int)$type ];
+        }
+        $this->setHerds($store);
+
+        $cardPayload = [ 'id' => (int)$cardId ];
+        if ($faceUp) { $cardPayload['type'] = (int)$type; }
+        $this->notify->all('herdUpdate', '', [
+            'player_id' => $playerId,
+            'card' => $cardPayload,
+            'visible' => $faceUp,
+        ]);
+
+        // Record owner-only identity for face-down additions and notify privately for live labeling
+        if (!$faceUp) {
+            $this->addKnown($playerId, (int)$cardId, (int)$type);
+        }
+    }
+
+    private function removeHerdCard(int $playerId, int $cardId): array
+    {
+        $store = $this->getHerds();
+        $this->ensureHerdEntry($store, $playerId);
+        $removed = [ 'type' => 0, 'faceUp' => false ];
+        // Search face-up first
+        foreach ($store[$playerId]['face_up'] as $i => $c) {
+            if ((int)$c['id'] === (int)$cardId) {
+                $removed = [ 'type' => (int)$c['type'], 'faceUp' => true ];
+                array_splice($store[$playerId]['face_up'], $i, 1);
+                $this->setHerds($store);
+                $this->notify->all('cardRemoved', '', [ 'player_id' => $playerId, 'card_id' => (int)$cardId, 'from_zone' => 'herd_up' ]);
+                $this->clearKnownByCard((int)$cardId);
+                return $removed;
+            }
+        }
+        // Then face-down
+        foreach ($store[$playerId]['face_down'] as $i => $c) {
+            if ((int)$c['id'] === (int)$cardId) {
+                $removed = [ 'type' => (int)$c['type'], 'faceUp' => false ];
+                array_splice($store[$playerId]['face_down'], $i, 1);
+                $this->setHerds($store);
+                $this->notify->all('cardRemoved', '', [ 'player_id' => $playerId, 'card_id' => (int)$cardId, 'from_zone' => 'herd_down' ]);
+                $this->clearKnownByCard((int)$cardId);
+                return $removed;
+            }
+        }
+        // not found → no-op
+        return $removed;
+    }
+
+    private function flipHerdCardUp(int $playerId, int $cardId): void
+    {
+        $store = $this->getHerds();
+        $this->ensureHerdEntry($store, $playerId);
+        foreach ($store[$playerId]['face_down'] as $i => $c) {
+            if ((int)$c['id'] === (int)$cardId) {
+                $type = (int)$c['type'];
+                // Remove from FD
+                array_splice($store[$playerId]['face_down'], $i, 1);
+                $this->notify->all('cardRemoved', '', [ 'player_id' => $playerId, 'card_id' => (int)$cardId, 'from_zone' => 'herd_down' ]);
+                // Clear any stored owner-known identity
+                $this->clearKnownByCard((int)$cardId);
+                // Add to FU and notify
+                $store[$playerId]['face_up'][] = [ 'id' => (int)$cardId, 'type' => $type ];
+                $this->setHerds($store);
+                $this->notify->all('herdUpdate', '', [ 'player_id' => $playerId, 'visible' => true, 'card' => [ 'id' => (int)$cardId, 'type' => $type ] ]);
+                return;
+            }
+        }
+        // If it was already FU or not found, no-op
+    }
+
+    private function countFaceDownHerd(int $playerId): int
+    {
+        $store = $this->getHerds();
+        $this->ensureHerdEntry($store, $playerId);
+        return count($store[$playerId]['face_down']);
+    }
+
+    private function herdHasLP(int $playerId): bool
+    {
+        $store = $this->getHerds();
+        $this->ensureHerdEntry($store, $playerId);
+        foreach ($store[$playerId]['face_up'] as $c) { if ((int)$c['type'] === 6) return true; }
+        foreach ($store[$playerId]['face_down'] as $c) { if ((int)$c['type'] === 6) return true; }
+        return false;
+    }
+
+    private function removeOneLaserPointer(int $playerId): array
+    {
+        $store = $this->getHerds();
+        $this->ensureHerdEntry($store, $playerId);
+        // Prefer face-up
+        foreach (['face_up', 'face_down'] as $zoneKey) {
+            foreach ($store[$playerId][$zoneKey] as $i => $c) {
+                if ((int)$c['type'] === 6) {
+                    $id = (int)$c['id'];
+                    $faceUp = ($zoneKey === 'face_up');
+                    array_splice($store[$playerId][$zoneKey], $i, 1);
+                    $this->setHerds($store);
+                    $this->notify->all('cardRemoved', '', [ 'player_id' => $playerId, 'card_id' => $id, 'from_zone' => $faceUp ? 'herd_up' : 'herd_down' ]);
+                    $this->clearKnownByCard($id);
+                    $this->notify->all('discardUpdate', '', [ 'player_id' => $playerId, 'card' => [ 'id' => $id, 'type' => 6 ] ]);
+                    return [ 'id' => $id, 'type' => 6, 'faceUp' => $faceUp ];
+                }
+            }
+        }
+        return [ 'id' => 0, 'type' => 0, 'faceUp' => false ];
+    }
+
+    private function getHerdSlotByIndex(int $playerId, int $index): array
+    {
+        $store = $this->getHerds();
+        $this->ensureHerdEntry($store, $playerId);
+        $idx = max(1, (int)$index) - 1;
+        if (isset($store[$playerId]['face_down'][$idx])) {
+            $c = $store[$playerId]['face_down'][$idx];
+            return [ 'id' => (int)$c['id'], 'type' => (int)$c['type'] ];
+        }
+        return [];
     }
 
     // =====================
@@ -712,9 +895,23 @@ class Game extends \Bga\GameFramework\Table
                 $this->setHandList($defender, $list);
             }
         } elseif ($decl === 5) {
-            // Animal Control: discard defender LP from herd
+            // Animal Control: consume the presented Laser Pointer from defender's herd (prefer the selected card)
             if ($zone === 'herd') {
-                $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $lpCardId, 'type' => 6 ] ]);
+                // Attempt to remove the presented card id; fallback to any LP if mismatch
+                $removed = [ 'id' => 0, 'type' => 0 ];
+                $store = $this->getHerds();
+                $this->ensureHerdEntry($store, $defender);
+                $ptype = null;
+                foreach ($store[$defender]['face_up'] as $c) { if ((int)$c['id'] === $lpCardId) { $ptype = (int)$c['type']; break; } }
+                if ($ptype === null) { foreach ($store[$defender]['face_down'] as $c) { if ((int)$c['id'] === $lpCardId) { $ptype = (int)$c['type']; break; } } }
+                if ((int)$ptype === 6) {
+                    // Remove the specific presented card
+                    $this->removeHerdCard($defender, $lpCardId);
+                    $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $lpCardId, 'type' => 6 ] ]);
+                } else {
+                    // Safety fallback
+                    $this->removeOneLaserPointer($defender);
+                }
             }
         }
 
@@ -797,7 +994,9 @@ class Game extends \Bga\GameFramework\Table
         $cardId = (int)$this->getGameStateValue(self::G_INTERCEPT_CARD);
         $challenger = (int)$this->getGameStateValue(self::G_CHALLENGER); // single challenger model
 
-        // Determine truth: for hand zone, check the presented card type; for herd, accept truthful in dummy mode
+        // Determine truth:
+        // - hand zone: truthful iff the presented hand card is Laser Pointer
+        // - herd zone: truthful iff the presented herd card is Laser Pointer
         $truth = true;
         if ($zone === 'hand') {
             $truth = false;
@@ -805,6 +1004,13 @@ class Game extends \Bga\GameFramework\Table
             foreach ($hand as $c) {
                 if ((int)$c['id'] === $cardId) { $truth = ((int)($c['type'] ?? 0) === 6); break; }
             }
+        } else {
+            $store = $this->getHerds();
+            $this->ensureHerdEntry($store, $defender);
+            $ptype = null;
+            foreach ($store[$defender]['face_down'] as $c) { if ((int)$c['id'] === $cardId) { $ptype = (int)$c['type']; break; } }
+            if ($ptype === null) { foreach ($store[$defender]['face_up'] as $c) { if ((int)$c['id'] === $cardId) { $ptype = (int)$c['type']; break; } } }
+            $truth = ((int)$ptype === 6);
         }
         if ($challenger === 0) {
             // No challengers → treat as truthful
@@ -813,13 +1019,19 @@ class Game extends \Bga\GameFramework\Table
 
         // Publish a compact result notification for logs/tests (only when a challenge actually occurred)
         if ($challenger !== 0) {
-            $this->notify->all('interceptChallengeResult', '', [
-                'defender_id'        => $defender,
-                'challenger_id'      => $challenger,
-                'zone'               => $zone,
-                'presented_card_id'  => $cardId,
-                'was_bluffing'       => !$truth,
-            ]);
+            $payload = [
+                'defender_id'   => $defender,
+                'challenger_id' => $challenger,
+                'zone'          => $zone,
+                'was_bluffing'  => !$truth,
+            ];
+            if ($zone === 'hand') {
+                $payload['presented_card_id'] = $cardId;
+            } else {
+                $payload['presented_card_id'] = $cardId; // presented herd card id
+                $payload['presented_slot_index'] = (int)$this->getGameStateValue(self::G_SELECTED_SLOT_INDEX);
+            }
+            $this->notify->all('interceptChallengeResult', '', $payload);
         }
 
         if ($truth) {
@@ -850,8 +1062,12 @@ class Game extends \Bga\GameFramework\Table
                 $counts = $this->adjustHandCount($defender, -1);
                 $this->notify->all('handCountUpdate', '', [ 'hand_counts' => $counts ]);
             } else {
-                // Herd: just publish a discard for a Laser Pointer
-                $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $cardId, 'type' => 6 ] ]);
+                // Herd bluff: remove the presented herd card id and discard it (penalty for failed bluff)
+                $removed = $this->removeHerdCard($defender, $cardId);
+                $rtype = (int)($removed['type'] ?? 0);
+                if ($rtype > 0) {
+                    $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $cardId, 'type' => $rtype ] ]);
+                }
             }
 
             // Clear intercept globals
@@ -985,6 +1201,8 @@ class Game extends \Bga\GameFramework\Table
                                 'to_player_id' => $actor,
                                 'card' => [ 'id' => $cid, 'type' => $ctype ]
                             ]);
+                            // Add stolen card to actor's herd face-down (public payload id-only)
+                            $this->addHerdCard($actor, $cid, $ctype, false);
                             // Stats: Catnip steal (normal)
                             $this->incStat(1, 'cards_stolen_by_catnip', $actor);
                             $this->incStat(1, 'cards_lost_to_catnip', $targetPlayer);
@@ -1004,10 +1222,32 @@ class Game extends \Bga\GameFramework\Table
                     'target_id'   => $targetPlayer,
                     'target_name' => $this->getPlayerNameById($targetPlayer),
                 ]);
-                // Fallback: without herd tracking, publish a generic discard from herd
                 if ($selectedIdx > 0) {
-                    $fakeId = 500000 + $selectedIdx;
-                    $this->notify->all('discardUpdate', '', [ 'player_id' => $targetPlayer, 'card' => [ 'id' => $fakeId, 'type' => 0 ] ]);
+                    // Reveal the defender's face-down slot using stored card id when available to avoid index drift
+                    $selCardId = (int)$this->getGameStateValue(self::G_SELECTED_SLOT_CARD_ID);
+                    $slot = [];
+                    if ($selCardId > 0) {
+                        $store = $this->getHerds();
+                        $this->ensureHerdEntry($store, $targetPlayer);
+                        foreach ($store[$targetPlayer]['face_down'] as $c) { if ((int)$c['id'] === $selCardId) { $slot = [ 'id' => (int)$c['id'], 'type' => (int)$c['type'] ]; break; } }
+                    }
+                    if (empty($slot)) {
+                        // Fallback to original index
+                        $slot = $this->getHerdSlotByIndex($targetPlayer, $selectedIdx);
+                    }
+                    if (!empty($slot)) {
+                        $cid = (int)$slot['id'];
+                        $ctype = (int)$slot['type'];
+                        if ($ctype === 5) {
+                            // Ineffective vs itself: flip the selected card face up
+                            $this->flipHerdCardUp($targetPlayer, $cid);
+                            $this->setGameStateValue(self::G_EFFECT_INEFFECTIVE, 1);
+                        } else {
+                            // Remove the FD herd card and discard it with actual type
+                            $removed = $this->removeHerdCard($targetPlayer, $cid);
+                            $this->notify->all('discardUpdate', '', [ 'player_id' => $targetPlayer, 'card' => [ 'id' => $cid, 'type' => (int)($removed['type'] ?? $ctype) ] ]);
+                        }
+                    }
                 }
                 break;
             default:
@@ -1034,13 +1274,8 @@ class Game extends \Bga\GameFramework\Table
                 'card' => [ 'id' => $card, 'type' => $actual ],
             ]);
         } else {
-            // For face-down herd entries, do not include the type in public payloads
-            $this->notify->all('herdUpdate', clienttranslate('Card added to herd'), [
-                'player_id' => $actor,
-                'player_name' => $this->getPlayerNameById($actor),
-                'card' => [ 'id' => $card ],
-                'visible' => false,
-            ]);
+            // Persist and notify via helper; FD adds do not reveal type
+            $this->addHerdCard($actor, $card, $actual, false);
         }
 
         // Clear intercept globals at end of resolution
@@ -1048,8 +1283,43 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateValue(self::G_INTERCEPT_ZONE, 0);
         $this->setGameStateValue(self::G_INTERCEPT_CARD, 0);
         $this->setGameStateValue(self::G_SELECTED_SLOT_INDEX, 0);
+        $this->setGameStateValue(self::G_SELECTED_SLOT_CARD_ID, 0);
 
         $this->gamestate->nextState('cardAdded');
+    }
+
+    // ==============================
+    // Owner-known FD identity store
+    // ==============================
+    private function getKnownMap(): array
+    {
+        $m = $this->globals->get('known_fd_identities');
+        return is_array($m) ? $m : [];
+    }
+
+    private function setKnownMap(array $map): void
+    {
+        $this->globals->set('known_fd_identities', $map);
+    }
+
+    private function addKnown(int $ownerId, int $cardId, int $type): void
+    {
+        $map = $this->getKnownMap();
+        if (!isset($map[$ownerId]) || !is_array($map[$ownerId])) { $map[$ownerId] = []; }
+        $map[$ownerId][(int)$cardId] = (int)$type;
+        $this->setKnownMap($map);
+        // Private notify to owner so label appears live without refresh
+        $this->notifyPlayer($ownerId, 'fdKnown', '', [ 'card' => [ 'id' => (int)$cardId, 'type' => (int)$type ] ]);
+    }
+
+    private function clearKnownByCard(int $cardId): void
+    {
+        $map = $this->getKnownMap();
+        $changed = false;
+        foreach ($map as $pid => $entries) {
+            if (isset($entries[(int)$cardId])) { unset($map[$pid][(int)$cardId]); $changed = true; }
+        }
+        if ($changed) { $this->setKnownMap($map); }
     }
 
     public function actSelectBlindFromChallenger(int $player_id, int $card_index): void
@@ -1066,24 +1336,47 @@ class Game extends \Bga\GameFramework\Table
             if ($player_id !== $defender) {
                 $player_id = $defender;
             }
-            $this->setGameStateValue(self::G_SELECTED_SLOT_INDEX, (int)$card_index);
             $zoneCode = (int)$this->getGameStateValue(self::G_TARGET_ZONE); // 1=hand,2=herd
             $zone = $zoneCode === 2 ? 'herd' : 'hand';
 
-            // Determine selected type for defender-only preview (hands only)
+            // Guard: when targeting herd, must have at least one face-down card
+            if ($zone === 'herd' && $this->countFaceDownHerd($defender) <= 0) {
+                throw new \BgaUserException(self::_("No face-down herd cards to select."));
+            }
+
+            $this->setGameStateValue(self::G_SELECTED_SLOT_INDEX, (int)$card_index);
+
+            // Determine selected card and type for defender-only preview
+            // For hand: reveal the hand card type to the owner (defender) only.
+            // For herd: reveal the actual FD herd card type to its owner (defender) only.
             $selectedType = null;
+            $selectedCardId = null;
             if ($zone === 'hand') {
                 $hand = $this->getHandList($defender);
                 $idx = max(1, (int)$card_index) - 1;
-                if (isset($hand[$idx]) && isset($hand[$idx]['type'])) {
-                    $selectedType = (int)$hand[$idx]['type'];
+                if (isset($hand[$idx])) {
+                    $selectedCardId = isset($hand[$idx]['id']) ? (int)$hand[$idx]['id'] : null;
+                    if (isset($hand[$idx]['type'])) {
+                        $selectedType = (int)$hand[$idx]['type'];
+                    }
+                }
+            } else { // herd
+                $slot = $this->getHerdSlotByIndex($defender, (int)$card_index);
+                if (!empty($slot)) {
+                    $selectedCardId = isset($slot['id']) ? (int)$slot['id'] : null;
+                    $selectedType = isset($slot['type']) ? (int)$slot['type'] : null;
                 }
             }
+            // Store the selected slot card id for stable targeting across penalties
+            $this->setGameStateValue(self::G_SELECTED_SLOT_CARD_ID, (int)($selectedCardId ?? 0));
+
             // Private defender preview
             $this->notifyPlayer($defender, 'defenderTargetPreview', '', [
                 'selected_slot_index' => (int)$card_index,
                 'selected_slot_type' => $selectedType,
+                'selected_slot_card_id' => $selectedCardId,
                 'zone' => $zone,
+                'target_player_id' => $defender,
             ]);
             // Public announcement without type
             $this->notify->all('targetSlotSelected', '', [
@@ -1388,6 +1681,7 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateValue(self::G_INTERCEPT_ZONE, 0);
         $this->setGameStateValue(self::G_INTERCEPT_CARD, 0);
         $this->setGameStateValue(self::G_SELECTED_SLOT_INDEX, 0);
+        $this->setGameStateValue(self::G_SELECTED_SLOT_CARD_ID, 0);
 
         // Now advance to the next player in turn order
         $this->activeNextPlayer();
@@ -1448,17 +1742,26 @@ class Game extends \Bga\GameFramework\Table
         $actor = (int)$this->getGameStateValue(self::G_ACTOR);
         $defender = (int)$this->getGameStateValue(self::G_TARGET_PLAYER);
         $zoneCode = (int)$this->getGameStateValue(self::G_TARGET_ZONE); // 1=hand,2=herd
+        $zone = ($zoneCode === 2) ? 'herd' : 'hand';
         $handCount = 0;
-        if ($zoneCode === 1) {
+        $fdCount = 0;
+        if ($zone === 'hand') {
             $handCount = count($this->getHandList($defender));
         } else {
-            // Fallback when herd model is not tracked: show at least 1 slot for selection UI
-            $handCount = 1;
+            // Real herd count from store for gating
+            $fdCount = $this->countFaceDownHerd($defender);
         }
+        $entry = [ 'player_id' => $defender ];
+        if ($zone === 'hand') { $entry['hand_count'] = $handCount; }
+        if ($zone === 'herd') { $entry['fd_count'] = $fdCount; }
+
         return [
             'actor_id' => $actor,
             'actor_name' => $this->getPlayerNameById($actor),
-            'challengers' => [[ 'player_id' => $defender, 'hand_count' => $handCount ]],
+            'defender_id' => $defender,
+            'zone' => $zone,
+            'fd_count' => $fdCount,
+            'challengers' => [ $entry ],
         ];
     }
 
@@ -1534,6 +1837,23 @@ class Game extends \Bga\GameFramework\Table
                 throw new \BgaUserException(self::_("Selected card not found in hand"));
             }
             // Do not enforce Laser Pointer type here; truth is resolved in challenge window
+        } else { // herd
+            // Require selecting a face-down herd card id belonging to defender
+            $store = $this->getHerds();
+            $this->ensureHerdEntry($store, $defender);
+            $ok = false;
+            foreach ($store[$defender]['face_down'] as $c) { if ((int)$c['id'] === (int)$card_id) { $ok = true; break; } }
+            if (!$ok) {
+                throw new \BgaUserException(self::_("Select a face-down herd card to present."));
+            }
+            // Additional rule: cannot present the exact card that was originally targeted by Animal Control
+            $selIdx = (int)$this->getGameStateValue(self::G_SELECTED_SLOT_INDEX);
+            if ($selIdx > 0) {
+                $targetSlot = $this->getHerdSlotByIndex($defender, $selIdx);
+                if (!empty($targetSlot) && (int)$targetSlot['id'] === (int)$card_id) {
+                    throw new \BgaUserException(self::_("You cannot present the targeted card for intercept."));
+                }
+            }
         }
 
         // Store intercept globals; resolution happens in intercept challenge window or reveal
