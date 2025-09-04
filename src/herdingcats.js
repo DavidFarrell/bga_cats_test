@@ -49,6 +49,9 @@ function (dojo, declare) {
             this._interceptZone = null;
             this._selectedInterceptHerdCardId = null;
             
+            // Final scoring modal state
+            this._finalShown = false;
+            
             // Card type names for UI (plain strings; translate at render time)
             this.cardTypeNames = {
                 1: 'Kitten',
@@ -126,6 +129,13 @@ function (dojo, declare) {
             
             // Setup event handlers
             this.setupEventHandlers();
+
+            // If final scoring is already available (reconnect), render the modal
+            try {
+                if (gamedatas.final_scoring) {
+                    this.renderFinalScoring(gamedatas.final_scoring);
+                }
+            } catch(e) { console.warn('final_scoring render failed', e); }
             
             // Setup game notifications to handle (see "setupNotifications" method below)
             this.setupNotifications();
@@ -285,6 +295,12 @@ function (dojo, declare) {
             // Connect cancel buttons
             dojo.connect($('hc_cancel_declare'), 'onclick', this, 'onCancelDeclaration');
             dojo.connect($('hc_cancel_target'), 'onclick', this, 'onCancelTargeting');
+
+            // Final scoring acknowledge button (may not exist until modal rendered)
+            const ackBtn = $('hc_final_ack');
+            if (ackBtn) {
+                dojo.connect(ackBtn, 'onclick', this, 'onFinalAcknowledge');
+            }
         },
 
         ///////////////////////////////////////////////////
@@ -1293,6 +1309,15 @@ function (dojo, declare) {
             }), 'info');
         },
 
+        notif_animalControlIneffective: async function(args)
+        {
+            console.log('notif_animalControlIneffective', args);
+            const target = args && (args.target_name || args.target_id);
+            this.showMessage(dojo.string.substitute(_("Ineffective: ${target} reveals Animal Control (protected)"), {
+                target: target || _('target')
+            }), 'info');
+        },
+
         notif_cardRemoved: async function( args )
         {
             console.log( 'notif_cardRemoved', args );
@@ -1434,6 +1459,70 @@ function (dojo, declare) {
             
             // Show game end message
             this.showMessage(_('Game Over! Final scores calculated.'), 'info');
+        },
+
+        notif_finalScoring: async function(args) {
+            console.log('notif_finalScoring', args);
+            this.renderFinalScoring(args);
+        },
+
+        renderFinalScoring: function(data) {
+            try {
+                if (this._finalShown) return;
+                const overlay = $('hc_final_overlay');
+                if (!overlay) return;
+                // Build table
+                const host = $('hc_final_table');
+                if (host) {
+                    host.innerHTML = '';
+                    const table = dojo.create('table', {}, host);
+                    const thead = dojo.create('thead', {}, table);
+                    const trh = dojo.create('tr', {}, thead);
+                    const headers = ['Player','Kitten','Show Cat','Alley Cat','Catnip','Animal Control','Laser Pointer','Herd Points','Hand (n)','Hand Bonus','Total'];
+                    headers.forEach(h => dojo.create('th', { innerHTML: _(h) }, trh));
+                    const tbody = dojo.create('tbody', {}, table);
+                    // Determine top score
+                    let top = -9999;
+                    try { if (data && data.scores) { Object.values(data.scores).forEach(v => { const n = parseInt(v)||0; if (n>top) top=n; }); } } catch(e) {}
+                    (data.rows || []).forEach(row => {
+                        const tr = dojo.create('tr', {}, tbody);
+                        if (parseInt(row.total_points) === parseInt(top)) dojo.addClass(tr, 'hc_winner');
+                        const c = row.herd_counts || {};
+                        const tds = [
+                            row.player_name,
+                            c[1]||0,
+                            c[2]||0,
+                            c[3]||0,
+                            c[4]||0,
+                            c[5]||0,
+                            c[6]||0,
+                            row.herd_points||0,
+                            row.hand_count||0,
+                            row.hand_bonus||0,
+                            row.total_points||0
+                        ];
+                        tds.forEach((val, idx) => {
+                            const td = dojo.create('td', { innerHTML: val }, tr);
+                            if (idx === tds.length - 1) dojo.addClass(td, 'hc_total_col');
+                        });
+                    });
+                }
+                overlay.style.display = '';
+                const ackBtn = $('hc_final_ack');
+                if (ackBtn) {
+                    try { dojo.disconnect(ackBtn); } catch(e) {}
+                    dojo.connect(ackBtn, 'onclick', this, 'onFinalAcknowledge');
+                }
+                this._finalShown = true;
+            } catch (e) {
+                console.warn('renderFinalScoring failed', e);
+            }
+        },
+
+        onFinalAcknowledge: function() {
+            try {
+                this.ajaxcall(this._actionUrl('actAcknowledgeFinal'), {}, this, function() {}, function() {});
+            } catch(e) {}
         },
 
         notif_playerEliminated: async function( args )

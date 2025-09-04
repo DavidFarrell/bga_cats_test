@@ -34,13 +34,14 @@ Mechanics Test Matrix
 - Scoring: Show Cat=5 (or 7 if any Kitten present), Kitten=2, Alley Cat=1, Catnip=1, Animal Control=0, Laser Pointer=0; hand bonus +1 per 2 cards (rounded up).
 
 Card-Specific Plans
-- See per-card documents under testplans/:
+- See per-card documents under `testplans/`:
   - testplans/kitten.md
   - testplans/show_cat.md
   - testplans/alley_cat.md
   - testplans/catnip.md
   - testplans/animal_control.md
   - testplans/laser_pointer.md
+  - testplans/end_game.md (end trigger + scoring)
 
 Progress Tracking
 - Each per-card plan ends with a case checklist. Mark "[x]" when a case passes; leave "[ ]" and append "❌" if failing.

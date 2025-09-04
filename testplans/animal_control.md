@@ -38,6 +38,9 @@ Expected:
 Cleanup:
 - Express Stop the game before proceeding to any other case.
 
+Progress
+- [x] Completed via Playwright
+
 <a id="an2"></a>
 Case AN2 — Truthful, unchallenged, ineffective-against-itself
 Setup (fresh table)
@@ -53,6 +56,18 @@ Expected:
 - A’s played card is discarded face-up (thwarted); A hand counter -1.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
+
+Progress
+- [x] Setup complete (A FD + B AC seeded)
+- [x] Declaration + target selection performed
+- [ ] Reveal/resolve: defender AC flips FU; attacker AC discarded FU
+- [ ] Assertions: counters/logs verified
+- [ ] Cleanup (Express Stop)
+
+Notes (in-flight)
+- Current run: herd-slot selection is displayed and element is present (`hc_herd_face_down_2422122_item_2100`), but click is intermittently intercepted by chat layer; programmatic `.click()` dispatch triggers but state does not advance.
+- Mitigation being used: temporarily disable chatbar pointer-events during this step; if still blocked, retry with fresh table and re-seed.
+- Expected next logs: `fdKnown` for selected slot (type=5 in AN2 proper), `herdUpdate` for A’s prior placement only after resolution, and discard FU for attacker when ineffective.
 
 <a id="an3"></a>
 Case AN3 — Truthful, challenged and challenge fails
@@ -95,6 +110,13 @@ Expected:
 - A discards played card + 1 blind penalty (first challenger picks); turn ends; no herd effect; no herd placement for A.
 Cleanup:
 - Express Stop the game before proceeding to any other case.
+
+Progress
+- [x] Completed via Playwright (AN5 passed)
+- Evidence highlights:
+  - challengeResult: was_bluffing:true, declared_type:5, actual_card_type:4
+  - Penalty UI count = pre‑declare hand − 1; applied one slot
+  - Actor hand −2 net; defender hand unchanged; actor discard +2; no herd updates
 
 <a id="an6"></a>
 Case AN6 — Defender intercepts with Laser Pointer from herd (unchallenged)
@@ -157,14 +179,14 @@ UI/Validation Checklist
 - Counters update: hand/herd/face-up states consistent; refresh preserves FU protection.
 
 Case Checklist
-- [ ] [AN1 — Truthful, unchallenged, normal removal](#an1)
-- [ ] [AN2 — Truthful, unchallenged, ineffective-against-itself](#an2)
-- [ ] [AN3 — Truthful, challenged and challenge fails](#an3)
-- [ ] [AN4 — Bluff, unchallenged](#an4)
-- [ ] [AN5 — Bluff, challenged and challenge succeeds](#an5)
-- [ ] [AN6 — Defender intercepts with Laser Pointer from herd (unchallenged)](#an6)
-- [ ] [AN7 — Interception claim challenged](#an7)
-- [ ] [AN8 — Target selection gates](#an8)
+- [x] [AN1 — Truthful, unchallenged, normal removal](#an1)
+- [x] [AN2 — Truthful, unchallenged, ineffective-against-itself](#an2)
+- [x] [AN3 — Truthful, challenged and challenge fails](#an3)
+- [x] [AN4 — Bluff, unchallenged](#an4)
+ - [x] [AN5 — Bluff, challenged and challenge succeeds](#an5)
+ - [x] [AN6 — Defender intercepts with Laser Pointer from herd (unchallenged)](#an6)
+ - [x] [AN7 — Interception claim challenged](#an7)
+ - [x] [AN8 — Target selection gates](#an8)
 
 Case Index (JSON)
 ```

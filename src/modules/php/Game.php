@@ -313,6 +313,19 @@ class Game extends \Bga\GameFramework\Table
         $known = $this->getKnownMap();
         $result['known_identities'] = isset($known[$current_player_id]) ? $known[$current_player_id] : [];
 
+        // Convenience: id => score map
+        $scores = [];
+        foreach ($result['players'] as $pid => $row) {
+            $scores[(int)$pid] = (int)($row['score'] ?? 0);
+        }
+        $result['scores'] = $scores;
+
+        // Include final scoring payload during final presentation for reconnects
+        $final = $this->globals->get('final_scoring');
+        if (is_array($final) && !empty($final)) {
+            $result['final_scoring'] = $final;
+        }
+
         return $result;
     }
 
@@ -375,6 +388,16 @@ class Game extends \Bga\GameFramework\Table
                     }
                     return $pa <=> $pb;
                 });
+                // If a card has just been declared by this player and is pending resolution,
+                // it is no longer selectable from hand on the client. Exclude it from the
+                // server-side hand list as well to keep counts/slots in sync during penalties.
+                $pendingOwner = (int)$this->getGameStateValue(self::G_ACTOR);
+                $pendingId    = (int)$this->getGameStateValue(self::G_PENDING_CARD);
+                if ($pendingId > 0 && $playerId === $pendingOwner) {
+                    $list = array_values(array_filter($list, function($c) use ($pendingId) {
+                        return (int)($c['id'] ?? 0) !== $pendingId;
+                    }));
+                }
                 return $list;
             }
         }
@@ -898,19 +921,37 @@ class Game extends \Bga\GameFramework\Table
             // Animal Control: consume the presented Laser Pointer from defender's herd (prefer the selected card)
             if ($zone === 'herd') {
                 // Attempt to remove the presented card id; fallback to any LP if mismatch
-                $removed = [ 'id' => 0, 'type' => 0 ];
                 $store = $this->getHerds();
                 $this->ensureHerdEntry($store, $defender);
                 $ptype = null;
                 foreach ($store[$defender]['face_up'] as $c) { if ((int)$c['id'] === $lpCardId) { $ptype = (int)$c['type']; break; } }
                 if ($ptype === null) { foreach ($store[$defender]['face_down'] as $c) { if ((int)$c['id'] === $lpCardId) { $ptype = (int)$c['type']; break; } } }
+
                 if ((int)$ptype === 6) {
-                    // Remove the specific presented card
+                    // Presented card is actually a Laser Pointer → discard it
                     $this->removeHerdCard($defender, $lpCardId);
                     $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $lpCardId, 'type' => 6 ] ]);
                 } else {
-                    // Safety fallback
-                    $this->removeOneLaserPointer($defender);
+                    // Fallback: remove any Laser Pointer from herd; if none exists, discard the presented card
+                    $removed = $this->removeOneLaserPointer($defender);
+                    if ((int)($removed['id'] ?? 0) === 0) {
+                        // No LP available in herd (unchallenged bluff). As a safety net, the presented card is
+                        // sacrificed instead so the intercept is not free. Discard it face-up with its true type.
+                        // This keeps the substitution model meaningful: the originally selected herd card remains
+                        // hidden/untouched; the defender still loses a card.
+                        $kind = null; $isFu = false;
+                        foreach ($store[$defender]['face_up'] as $c) { if ((int)$c['id'] === $lpCardId) { $kind = (int)$c['type']; $isFu = true; break; } }
+                        if ($kind === null) {
+                            foreach ($store[$defender]['face_down'] as $c) { if ((int)$c['id'] === $lpCardId) { $kind = (int)$c['type']; break; } }
+                        }
+                        // Remove from herd store and notify
+                        $this->removeHerdCard($defender, $lpCardId);
+                        if ($kind !== null) {
+                            $this->notify->all('discardUpdate', '', [ 'player_id' => $defender, 'card' => [ 'id' => $lpCardId, 'type' => (int)$kind ] ]);
+                        }
+                        // Optional: track a failed-intercept-without-LP stat
+                        $this->incStat(1, 'failed_intercepts', $defender);
+                    }
                 }
             }
         }
@@ -1216,7 +1257,8 @@ class Game extends \Bga\GameFramework\Table
                 }
                 break;
             case 5: // Animal Control
-                $this->notify->all('animalControlEffect', clienttranslate('${player_name} removes a card from ${target_name}\'s herd'), [
+                // Announce the attempt before outcome is known
+                $this->notify->all('animalControlEffect', clienttranslate('${player_name} attempts to remove a card from ${target_name}\'s herd'), [
                     'player_id'   => $actor,
                     'player_name' => $this->getPlayerNameById($actor),
                     'target_id'   => $targetPlayer,
@@ -1241,11 +1283,28 @@ class Game extends \Bga\GameFramework\Table
                         if ($ctype === 5) {
                             // Ineffective vs itself: flip the selected card face up
                             $this->flipHerdCardUp($targetPlayer, $cid);
+                            // Explicit ineffective notification to remove ambiguity in logs/UI
+                            $this->notify->all('animalControlIneffective', clienttranslate('Ineffective: ${target_name}\'s card is Animal Control and becomes protected'), [
+                                'player_id'   => $actor,
+                                'player_name' => $this->getPlayerNameById($actor),
+                                'target_id'   => $targetPlayer,
+                                'target_name' => $this->getPlayerNameById($targetPlayer),
+                                'card'        => [ 'id' => $cid, 'type' => $ctype ],
+                                'ineffective_against_itself' => true,
+                            ]);
                             $this->setGameStateValue(self::G_EFFECT_INEFFECTIVE, 1);
                         } else {
                             // Remove the FD herd card and discard it with actual type
                             $removed = $this->removeHerdCard($targetPlayer, $cid);
                             $this->notify->all('discardUpdate', '', [ 'player_id' => $targetPlayer, 'card' => [ 'id' => $cid, 'type' => (int)($removed['type'] ?? $ctype) ] ]);
+                            // Explicit success notification to complement the initial "attempts" message
+                            $this->notify->all('animalControlRemoved', clienttranslate('${player_name} removes a card from ${target_name}\'s herd'), [
+                                'player_id'   => $actor,
+                                'player_name' => $this->getPlayerNameById($actor),
+                                'target_id'   => $targetPlayer,
+                                'target_name' => $this->getPlayerNameById($targetPlayer),
+                                'card'        => [ 'id' => $cid, 'type' => (int)($removed['type'] ?? $ctype) ],
+                            ]);
                         }
                     }
                 }
@@ -1683,9 +1742,176 @@ class Game extends \Bga\GameFramework\Table
         $this->setGameStateValue(self::G_SELECTED_SLOT_INDEX, 0);
         $this->setGameStateValue(self::G_SELECTED_SLOT_CARD_ID, 0);
 
-        // Now advance to the next player in turn order
+        // End-of-game check: if any player has 0 cards in hand, trigger final scoring
+        $handCounts = $this->getHandCounts();
+        $anyZero = false;
+        foreach ($handCounts as $pid => $n) {
+            if ((int)$n === 0) { $anyZero = true; break; }
+        }
+
+        if ($anyZero) {
+            // Compute final scoring and persist results
+            $final = $this->computeFinalScoring();
+
+            // Persist totals to DB so that BGA end screen shows correct scores
+            if (isset($final['scores']) && is_array($final['scores'])) {
+                foreach ($final['scores'] as $pid => $total) {
+                    $pid = (int)$pid; $total = (int)$total;
+                    self::DbQuery("UPDATE `player` SET `player_score` = {$total} WHERE `player_id` = {$pid}");
+                }
+            }
+
+            // Persist to globals for reconnects
+            $final['ended_at_ts'] = time();
+            $this->globals->set('final_scoring', $final);
+            $acks = [];
+            foreach ($this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`") as $p) {
+                $acks[(int)$p['id']] = false;
+            }
+            $this->globals->set('final_ack', $acks);
+
+            // Notify clients with rich table + scores map (legacy handler updates counters)
+            $this->notify->all('finalScoring', '', $final);
+            $this->notify->all('gameEnd', clienttranslate('Game Over! Final scores calculated.'), [
+                'scores' => $final['scores'] ?? []
+            ]);
+
+            // Transition to final presentation (acknowledgement) state
+            $this->gamestate->nextState('gameEnd');
+            return;
+        }
+
+        // Otherwise, advance to the next player in turn order
         $this->activeNextPlayer();
         $this->gamestate->nextState('nextPlayer');
+    }
+
+    // ========= Final Scoring helpers and state =========
+
+    /**
+     * Build per-player herd counts across both face-down and face-up cards.
+     * @return array<int, array<int,int>> Map: playerId => { type => count }
+     */
+    private function computeHerdCounts(): array
+    {
+        $store = $this->getHerds();
+        $players = $this->getCollectionFromDb("SELECT `player_id` `id` FROM `player`");
+        $result = [];
+        foreach ($players as $p) {
+            $pid = (int)$p['id'];
+            $result[$pid] = [1=>0,2=>0,3=>0,4=>0,5=>0,6=>0];
+            $entry = $store[$pid] ?? [ 'face_down' => [], 'face_up' => [] ];
+            foreach (['face_down','face_up'] as $zone) {
+                foreach ($entry[$zone] as $c) {
+                    $t = (int)($c['type'] ?? 0);
+                    if ($t >= 1 && $t <= 6) { $result[$pid][$t]++; }
+                }
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Compute herd points given counts per type. Show Cat is 5 each normally, or 7 each if player has ≥1 Kitten.
+     */
+    private function computeHerdPoints(array $counts): int
+    {
+        // Base values from CARD_POINTS
+        $total = 0;
+        $kittens = (int)($counts[1] ?? 0);
+        $showcats = (int)($counts[2] ?? 0);
+        // Types: 1..6
+        foreach ([3,4,5,6] as $t) {
+            $n = (int)($counts[$t] ?? 0);
+            $pts = (int)constant('CARD_POINTS')[$t];
+            $total += $n * $pts;
+        }
+        // Kittens
+        $total += $kittens * (int)constant('CARD_POINTS')[1];
+        // Show Cats with conditional bonus
+        if ($showcats > 0) {
+            $showVal = ($kittens > 0) ? (defined('SHOWCAT_KITTEN_BONUS_VALUE') ? (int)SHOWCAT_KITTEN_BONUS_VALUE : 7)
+                                      : (defined('SHOWCAT_BASE_VALUE') ? (int)SHOWCAT_BASE_VALUE : 5);
+            $total += $showcats * $showVal;
+        }
+        return $total;
+    }
+
+    /**
+     * Hand bonus: +1 point per 2 cards, rounded up.
+     */
+    private function computeHandBonus(int $handCount): int
+    {
+        if ($handCount <= 0) return 0;
+        return (int)ceil($handCount / 2.0);
+    }
+
+    /**
+     * Compute final scoring rows and totals for all players.
+     * @return array{ rows: array, scores: array<int,int>, card_points: array<int,int> }
+     */
+    private function computeFinalScoring(): array
+    {
+        $players = $this->getCollectionFromDb("SELECT `player_id` `id`, `player_name` `name` FROM `player`");
+        $countsMap = $this->computeHerdCounts();
+        $handCounts = $this->getHandCounts();
+
+        $rows = [];
+        $scores = [];
+        foreach ($players as $p) {
+            $pid = (int)$p['id'];
+            $name = (string)$p['name'];
+            $counts = $countsMap[$pid] ?? [1=>0,2=>0,3=>0,4=>0,5=>0,6=>0];
+            $herdPts = $this->computeHerdPoints($counts);
+            $handN = (int)($handCounts[$pid] ?? 0);
+            $handBonus = $this->computeHandBonus($handN);
+            $total = $herdPts + $handBonus;
+            $rows[] = [
+                'player_id' => $pid,
+                'player_name' => $name,
+                'herd_counts' => $counts,
+                'herd_points' => $herdPts,
+                'hand_count' => $handN,
+                'hand_bonus' => $handBonus,
+                'total_points' => $total,
+                'showcat_bonus_applied' => ((int)$counts[2] > 0 && (int)$counts[1] > 0),
+            ];
+            $scores[$pid] = $total;
+        }
+
+        // Provide a copy of card points for client context
+        $cardPoints = constant('CARD_POINTS');
+
+        return [
+            'rows' => $rows,
+            'scores' => $scores,
+            'card_points' => $cardPoints,
+        ];
+    }
+
+    public function stEnterFinalPresentation(): void
+    {
+        // Make everyone multiactive; proceed to end when all acknowledged
+        $this->gamestate->setAllPlayersMultiactive();
+    }
+
+    public function argFinalPresentation(): array
+    {
+        $payload = $this->globals->get('final_scoring');
+        return is_array($payload) ? $payload : [];
+    }
+
+    public function actAcknowledgeFinal(): void
+    {
+        $this->checkAction('actAcknowledgeFinal');
+        $pid = (int)$this->getCurrentPlayerId();
+        $ack = $this->globals->get('final_ack');
+        if (!is_array($ack)) { $ack = []; }
+        $ack[$pid] = true;
+        $this->globals->set('final_ack', $ack);
+        // Deactivate this player; if last, transition to end
+        $this->gamestate->setPlayerNonMultiactive($pid, 'toEnd');
+        $this->gamestate->updateMultiactiveOrNextState('toEnd');
     }
 
     // removed duplicate actSkipTargeting()

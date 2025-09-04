@@ -111,6 +111,17 @@
         </div>
     </div>
 
+    <!-- Final Scoring Overlay (hidden by default) -->
+    <div id="hc_final_overlay" class="hc_overlay" style="display:none;">
+        <div class="hc_final_panel">
+            <h3 id="hc_final_title">Game Over</h3>
+            <div id="hc_final_table" class="hc_final_table"></div>
+            <div style="text-align:center; margin-top:16px;">
+                <button id="hc_final_ack" class="hc_button">OK</button>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script type="text/javascript">

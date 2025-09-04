@@ -278,6 +278,21 @@ class action_herdingcats extends APP_GameAction
     }
 
     //////////////////////////////////////////////////////////////////////////////
+    //////////// Final Presentation (Ack)
+    //////////// 
+
+    /**
+     * Player acknowledges the final scoring modal so the game can proceed to end screen.
+     */
+    public function actAcknowledgeFinal()
+    {
+        self::setAjaxMode();
+        $this->game->checkAction('actAcknowledgeFinal');
+        $this->game->actAcknowledgeFinal();
+        self::ajaxResponse();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
     //////////// Debug Actions (if needed)
     //////////// 
 

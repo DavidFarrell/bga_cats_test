@@ -326,9 +326,26 @@ $machinestates = [
         ->action('stEndTurn')
         ->updateGameProgression(true)
         ->transitions([
-            'gameEnd' => 99,
+            // If end condition is met, go to final presentation (ack) before official end
+            'gameEnd' => 97,
             'nextPlayer' => 10,
             'zombie' => 10,  // Handle zombie players
+        ])
+        ->build(),
+
+    // ========== FINAL PRESENTATION (ACK) ==========
+
+    97 => GameStateBuilder::create()
+        ->name('finalPresentation')
+        ->description(clienttranslate('Final scoring – acknowledge to continue'))
+        ->type(StateType::MULTIPLE_ACTIVE_PLAYER)
+        ->args('argFinalPresentation')
+        ->action('stEnterFinalPresentation')
+        ->possibleactions([
+            'actAcknowledgeFinal'
+        ])
+        ->transitions([
+            'toEnd' => 99,
         ])
         ->build(),
 
