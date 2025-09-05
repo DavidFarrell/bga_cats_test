@@ -17,4 +17,9 @@
 mount_*.sh
 unmount_*.sh
 
-Screenshots/screenshots/
+# Claude settings
+.claude/
+
+# Screenshots
+screenshots/
+Screenshots/

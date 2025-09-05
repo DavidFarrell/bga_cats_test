@@ -1816,18 +1816,19 @@ class Game extends \Bga\GameFramework\Table
      */
     private function computeHerdPoints(array $counts): int
     {
-        // Base values from CARD_POINTS
+        // Base values from CARD_POINTS (fallback if constant is not defined on server)
         $total = 0;
+        $points = $this->getCardPoints();
         $kittens = (int)($counts[1] ?? 0);
         $showcats = (int)($counts[2] ?? 0);
         // Types: 1..6
         foreach ([3,4,5,6] as $t) {
             $n = (int)($counts[$t] ?? 0);
-            $pts = (int)constant('CARD_POINTS')[$t];
+            $pts = (int)($points[$t] ?? 0);
             $total += $n * $pts;
         }
         // Kittens
-        $total += $kittens * (int)constant('CARD_POINTS')[1];
+        $total += $kittens * (int)($points[1] ?? 0);
         // Show Cats with conditional bonus
         if ($showcats > 0) {
             $showVal = ($kittens > 0) ? (defined('SHOWCAT_KITTEN_BONUS_VALUE') ? (int)SHOWCAT_KITTEN_BONUS_VALUE : 7)
@@ -1879,13 +1880,33 @@ class Game extends \Bga\GameFramework\Table
             $scores[$pid] = $total;
         }
 
-        // Provide a copy of card points for client context
-        $cardPoints = constant('CARD_POINTS');
+        // Provide a copy of card points for client context (with safe fallback)
+        $cardPoints = $this->getCardPoints();
 
         return [
             'rows' => $rows,
             'scores' => $scores,
             'card_points' => $cardPoints,
+        ];
+    }
+
+    /**
+     * Return card point values, using global constant if available, otherwise a safe fallback.
+     * @return array<int,int>
+     */
+    private function getCardPoints(): array
+    {
+        if (defined('CARD_POINTS')) {
+            // @phpstan-ignore-next-line - CARD_POINTS is a global const in material.inc.php when available
+            return CARD_POINTS;
+        }
+        return [
+            1 => 2, // Kitten
+            2 => 5, // Show Cat (base; bonus handled separately)
+            3 => 1, // Alley Cat
+            4 => 1, // Catnip
+            5 => 0, // Animal Control
+            6 => 0, // Laser Pointer
         ];
     }
 

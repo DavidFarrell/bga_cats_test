@@ -1488,17 +1488,41 @@ function (dojo, declare) {
                         const tr = dojo.create('tr', {}, tbody);
                         if (parseInt(row.total_points) === parseInt(top)) dojo.addClass(tr, 'hc_winner');
                         const c = row.herd_counts || {};
+                        const pts = (data.card_points || {});
+                        const n = (t, def=0) => parseInt(c[t]||def) || 0;
+                        const px = (t, def=0) => parseInt(pts[t]||def) || 0;
+                        // Build math strings per type
+                        const kCount = n(1), kVal = px(1,2);
+                        const kittenStr = kCount>0 ? `${kCount} (${kCount}*${kVal}=${kCount*kVal})` : '0';
+                        const scCount = n(2), scBase = px(2,5);
+                        const hasKitten = (kCount>0);
+                        const scEach = hasKitten ? (scBase + 2) : scBase;
+                        const scMath = hasKitten ? `${scBase}+2` : `${scBase}`;
+                        const showCatStr = scCount>0 ? `${scCount} (${scCount}*(${scMath})=${scCount*scEach})` : '0';
+                        const acCount = n(3), acVal = px(3,1);
+                        const alleyStr = acCount>0 ? `${acCount} (${acCount}*${acVal}=${acCount*acVal})` : '0';
+                        const cnCount = n(4), cnVal = px(4,1);
+                        const catnipStr = cnCount>0 ? `${cnCount} (${cnCount}*${cnVal}=${cnCount*cnVal})` : '0';
+                        const anCount = n(5), anVal = px(5,0);
+                        const animalStr = anCount>0 ? `${anCount} (${anCount}*${anVal}=${anCount*anVal})` : '0';
+                        const lpCount = n(6), lpVal = px(6,0);
+                        const laserStr = lpCount>0 ? `${lpCount} (${lpCount}*${lpVal}=${lpCount*lpVal})` : '0';
+
+                        const handN = parseInt(row.hand_count)||0;
+                        const handBonus = parseInt(row.hand_bonus)||0;
+                        const handBonusStr = handN>0 ? `${handBonus} (ceil(${handN}/2)=${handBonus})` : '0';
+
                         const tds = [
                             row.player_name,
-                            c[1]||0,
-                            c[2]||0,
-                            c[3]||0,
-                            c[4]||0,
-                            c[5]||0,
-                            c[6]||0,
+                            kittenStr,
+                            showCatStr,
+                            alleyStr,
+                            catnipStr,
+                            animalStr,
+                            laserStr,
                             row.herd_points||0,
-                            row.hand_count||0,
-                            row.hand_bonus||0,
+                            handN,
+                            handBonusStr,
                             row.total_points||0
                         ];
                         tds.forEach((val, idx) => {
@@ -1508,11 +1532,15 @@ function (dojo, declare) {
                     });
                 }
                 overlay.style.display = '';
-                const ackBtn = $('hc_final_ack');
-                if (ackBtn) {
-                    try { dojo.disconnect(ackBtn); } catch(e) {}
-                    dojo.connect(ackBtn, 'onclick', this, 'onFinalAcknowledge');
+                let ackBtn = $('hc_final_ack');
+                if (!ackBtn) {
+                    // Fallback: create an acknowledge button if the template is missing it on the server
+                    const panel = overlay.querySelector('.hc_final_panel') || overlay;
+                    const footer = dojo.create('div', { className: 'hc_final_footer' }, panel);
+                    ackBtn = dojo.create('button', { id: 'hc_final_ack', className: 'hc_button', innerHTML: _('OK') }, footer);
                 }
+                try { dojo.disconnect(ackBtn); } catch(e) {}
+                dojo.connect(ackBtn, 'onclick', this, 'onFinalAcknowledge');
                 this._finalShown = true;
             } catch (e) {
                 console.warn('renderFinalScoring failed', e);

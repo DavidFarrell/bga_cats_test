@@ -466,6 +466,9 @@
 .hc_final_table .hc_total_col { font-weight: bold; }
 .hc_final_table .hc_winner { background: #fff8e1; }
 
+/* Footer area for final overlay (fallback if template lacked button) */
+.hc_final_footer { text-align: center; margin-top: 16px; }
+
 @keyframes slideUp {
     from {
         transform: translateY(50px);
