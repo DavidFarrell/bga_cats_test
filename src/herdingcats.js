@@ -109,6 +109,27 @@ function (dojo, declare) {
             // Setup player boards
             this.setupPlayerBoards(gamedatas);
 
+            // Debug banner (Studio): show deck counts provided by server
+            try {
+                if (gamedatas.debug_banner) {
+                    var b = $('hc_debug_banner');
+                    if (!b) {
+                        b = dojo.create('div', { id: 'hc_debug_banner', innerHTML: gamedatas.debug_banner }, document.body);
+                        b.style.position = 'fixed';
+                        b.style.bottom = '8px';
+                        b.style.left = '8px';
+                        b.style.background = 'rgba(0,0,0,0.75)';
+                        b.style.color = '#fff';
+                        b.style.padding = '4px 8px';
+                        b.style.fontSize = '11px';
+                        b.style.borderRadius = '4px';
+                        b.style.zIndex = '3000';
+                    } else {
+                        b.innerHTML = gamedatas.debug_banner;
+                    }
+                }
+            } catch(e) {}
+
             // Merge owner-known FD identities from server on reconnect
             try {
                 if (gamedatas.known_identities && typeof gamedatas.known_identities === 'object') {
@@ -140,6 +161,9 @@ function (dojo, declare) {
             // Setup game notifications to handle (see "setupNotifications" method below)
             this.setupNotifications();
 
+            // Initialize hover zoom for hand cards
+            try { this.initHoverZoom(); } catch(e) { console.warn('initHoverZoom failed', e); }
+
             console.log( "Ending game setup" );
         },
 
@@ -168,16 +192,58 @@ function (dojo, declare) {
             
             // Load current player's hand
             if (gamedatas.hand) {
-            // gamedatas.hand may be an object keyed by string ids or an array; support both
+                // gamedatas.hand may be an object keyed by string ids or an array; support both
                 const list = Array.isArray(gamedatas.hand) ? gamedatas.hand : Object.values(gamedatas.hand);
-                // Add all cards to stock
+                // Add all cards to stock with strict type guards (avoid "unknown item type <id>")
+                const expectedIds = [];
                 list.forEach(card => {
                     const cid = parseInt(card.id ?? card.card_id);
-                    const ctype = parseInt(card.type ?? card.card_type);
-                    if (!isNaN(cid) && !isNaN(ctype)) {
+                    let ctype = parseInt(card.type ?? card.card_type);
+                    if (isNaN(cid)) return;
+                    expectedIds.push(String(cid));
+                    if (isNaN(ctype) || ctype < 1 || ctype > 6) {
+                        console.warn('HC guard: invalid card type, coercing', card);
+                        // Fallback: default to Kitten (1) to avoid stock errors; UI will still allow declare
+                        ctype = 1;
+                    }
+                    // Standard signature: (type, id)
+                    try {
                         this.playerHand.addToStockWithId(ctype, cid);
+                    } catch (e) {
+                        // Emergency fallback: register a per-card item type and add
+                        try {
+                            const typeToImg = {
+                                1: 'img/herding_cats_art/kitten.jpeg',
+                                2: 'img/herding_cats_art/showcat.jpeg',
+                                3: 'img/herding_cats_art/alleycat.jpeg',
+                                4: 'img/herding_cats_art/catnip.jpeg',
+                                5: 'img/herding_cats_art/animalcontrol.jpeg',
+                                6: 'img/herding_cats_art/laserpointer.jpeg'
+                            };
+                            this.playerHand.addItemType(cid, ctype, g_gamethemeurl + typeToImg[ctype], 0);
+                            this.playerHand.addToStockWithId(cid, cid);
+                        } catch (_) {}
                     }
                 });
+                // Prune any stray items not matching expected card ids (e.g., framework variance artifacts)
+                const doCleanup = () => {
+                    try {
+                        const host = $('hc_current_hand');
+                        if (!host) return;
+                        const nodes = host.querySelectorAll('.stockitem');
+                        nodes.forEach(el => {
+                            const m = el.id && String(el.id).match(/_item_(\d+)$/);
+                            const vid = m ? m[1] : null;
+                            if (!vid || expectedIds.indexOf(String(vid)) === -1) {
+                                try { this.playerHand.removeFromStockById(String(vid)); } catch(_) {}
+                                try { el.parentNode && el.parentNode.removeChild(el); } catch(_) {}
+                            }
+                        });
+                        try { this.playerHand.updateDisplay(); } catch(_) {}
+                    } catch (e) { console.warn('hand cleanup failed', e); }
+                };
+                doCleanup();
+                setTimeout(doCleanup, 100);
                 // Reorder hand to match server-provided positions (location_arg) so both players see the same order
                 try {
                     const weights = {};
@@ -228,6 +294,7 @@ function (dojo, declare) {
                 this.playerDiscards[playerId].create(this, $('hc_discard_' + playerId), 72, 96);
                 this.playerDiscards[playerId].image_items_per_row = 1;
                 const typeToImg2 = {
+                    0: 'img/herding_cats_art/cardback.jpeg',
                     1: 'img/herding_cats_art/kitten.jpeg',
                     2: 'img/herding_cats_art/showcat.jpeg',
                     3: 'img/herding_cats_art/alleycat.jpeg',
@@ -235,7 +302,7 @@ function (dojo, declare) {
                     5: 'img/herding_cats_art/animalcontrol.jpeg',
                     6: 'img/herding_cats_art/laserpointer.jpeg'
                 };
-                for (let cardType = 1; cardType <= 6; cardType++) {
+                for (let cardType = 0; cardType <= 6; cardType++) {
                     this.playerDiscards[playerId].addItemType(cardType, cardType, g_gamethemeurl + typeToImg2[cardType], 0);
                 }
                 
@@ -301,6 +368,166 @@ function (dojo, declare) {
             if (ackBtn) {
                 dojo.connect(ackBtn, 'onclick', this, 'onFinalAcknowledge');
             }
+        },
+
+        /*
+         * Hover Zoom Preview for hand cards
+         * Shows a larger version of the card art when hovering a card in the current hand.
+         */
+        initHoverZoom: function() {
+            var host = $('hc_current_hand');
+            if (!host) return;
+
+            // Create a single reusable preview element
+            if (!$('hc_hover_zoom')) {
+                var zoom = dojo.create('div', { id: 'hc_hover_zoom', className: 'hc_zoom_preview' }, document.body);
+            }
+
+            this._hoverZoomTarget = null;
+            this._hoverZoomTimer = null;
+
+            // Event delegation on the hand container
+            dojo.connect(host, 'onmouseover', this, function(e){ this._hoverZoomHandleOver(e); });
+            dojo.connect(host, 'onmousemove', this, function(e){ this._hoverZoomHandleMove(e); });
+            dojo.connect(host, 'onmouseout', this, function(e){ this._hoverZoomHandleOut(e); });
+            // Extra safety: hide when leaving the hand area entirely
+            dojo.connect(host, 'onmouseleave', this, function(){ this._hoverZoomHide(); });
+
+            // Owner-only: enable hover zoom for our own face-down herd using known identities
+            var herdFD = $('hc_herd_face_down_' + this.player_id);
+            if (herdFD) {
+                dojo.connect(herdFD, 'onmouseover', this, function(e){ this._herdHoverHandleOver(e); });
+                dojo.connect(herdFD, 'onmousemove', this, function(e){ this._hoverZoomHandleMove(e); });
+                dojo.connect(herdFD, 'onmouseout', this, function(e){ this._herdHoverHandleOut(e); });
+                dojo.connect(herdFD, 'onmouseleave', this, function(){ this._hoverZoomHide(); });
+            }
+        },
+
+        _hoverZoomHandleOver: function(e) {
+            try {
+                var host = $('hc_current_hand');
+                if (!host) return;
+                var el = e && e.target ? (e.target.closest ? e.target.closest('.stockitem') : null) : null;
+                if (!el || !host.contains(el)) return;
+                if (this._hoverZoomTarget === el) return;
+                this._hoverZoomTarget = el;
+                // Start a small delay before showing to avoid flicker as mouse moves
+                clearTimeout(this._hoverZoomTimer);
+                this._hoverZoomTimer = setTimeout(() => {
+                    try { this._hoverZoomShow(el, e); } catch(_) {}
+                }, 200);
+            } catch(_) {}
+        },
+
+        _hoverZoomHandleMove: function(e) {
+            try {
+                var zoom = $('hc_hover_zoom');
+                if (!zoom || zoom.style.display !== 'block') return;
+                this._hoverZoomPosition(e);
+            } catch(_) {}
+        },
+
+        _hoverZoomHandleOut: function(e) {
+            try {
+                var host = $('hc_current_hand');
+                if (!host) return;
+                var el = e && e.target ? (e.target.closest ? e.target.closest('.stockitem') : null) : null;
+                if (!el) return;
+                var rt = e.relatedTarget;
+                // If moving to another stockitem within host, let over/move handlers update instead of hiding
+                if (rt && (rt.closest ? rt.closest('.stockitem') : null) && host.contains(rt)) return;
+                // Leaving current stockitem
+                this._hoverZoomTarget = null;
+                clearTimeout(this._hoverZoomTimer);
+                this._hoverZoomHide();
+            } catch(_) {}
+        },
+
+        _hoverZoomShow: function(el, e) {
+            var zoom = $('hc_hover_zoom');
+            if (!zoom) return;
+            // Get the background image URL from the stock item
+            var bg = window.getComputedStyle(el).backgroundImage || '';
+            if (!bg || bg === 'none') return;
+            zoom.style.backgroundImage = bg;
+
+            // Size based on stock item size × factor
+            var baseW = (this.playerHand && this.playerHand.item_width) ? this.playerHand.item_width : 72;
+            var baseH = (this.playerHand && this.playerHand.item_height) ? this.playerHand.item_height : 96;
+            var factor = 2.7; // readable but not overwhelming
+            zoom.style.width = Math.round(baseW * factor) + 'px';
+            zoom.style.height = Math.round(baseH * factor) + 'px';
+
+            zoom.style.display = 'block';
+            this._hoverZoomPosition(e);
+        },
+
+        _hoverZoomPosition: function(e) {
+            try {
+                var zoom = $('hc_hover_zoom');
+                if (!zoom || !e) return;
+                var vw = window.innerWidth || document.documentElement.clientWidth;
+                var vh = window.innerHeight || document.documentElement.clientHeight;
+                var rect = { w: zoom.offsetWidth, h: zoom.offsetHeight };
+                var x = e.clientX + 16;
+                var y = e.clientY + 16;
+                if (x + rect.w + 8 > vw) x = e.clientX - rect.w - 16;
+                if (y + rect.h + 8 > vh) y = e.clientY - rect.h - 16;
+                if (x < 8) x = 8;
+                if (y < 8) y = 8;
+                zoom.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+            } catch(_) {}
+        },
+
+        _hoverZoomHide: function() {
+            var zoom = $('hc_hover_zoom');
+            if (zoom) {
+                zoom.style.display = 'none';
+            }
+        },
+
+        // ==========================
+        // Herd (owner-only) hover
+        // ==========================
+        _parseCardIdFromStockItem: function(el) {
+            try {
+                if (!el || !el.id) return null;
+                var m = String(el.id).match(/_item_(\d+)$/);
+                if (!m) return null;
+                return parseInt(m[1]);
+            } catch(_) { return null; }
+        },
+
+        _herdHoverHandleOver: function(e) {
+            try {
+                var container = $('hc_herd_face_down_' + this.player_id);
+                if (!container) return;
+                var el = e && e.target ? (e.target.closest ? e.target.closest('.stockitem') : null) : null;
+                if (!el || !container.contains(el)) return;
+                if (this._hoverZoomTarget === el) return;
+                var cid = this._parseCardIdFromStockItem(el);
+                if (!cid) return;
+                var type = this.knownFD && this.knownFD[String(cid)];
+                if (!type) return; // unknown identity; do not show
+                this._hoverZoomTarget = el;
+                clearTimeout(this._hoverZoomTimer);
+                var self = this;
+                this._hoverZoomTimer = setTimeout(function(){ self._hoverZoomShowType(type, e); }, 150);
+            } catch(_) {}
+        },
+
+        _herdHoverHandleOut: function(e) {
+            try {
+                var container = $('hc_herd_face_down_' + this.player_id);
+                if (!container) return;
+                var el = e && e.target ? (e.target.closest ? e.target.closest('.stockitem') : null) : null;
+                if (!el) return;
+                var rt = e.relatedTarget;
+                if (rt && (rt.closest ? rt.closest('.stockitem') : null) && container.contains(rt)) return;
+                this._hoverZoomTarget = null;
+                clearTimeout(this._hoverZoomTimer);
+                this._hoverZoomHide();
+            } catch(_) {}
         },
 
         ///////////////////////////////////////////////////
@@ -393,6 +620,18 @@ function (dojo, declare) {
                 this.showTargetSelection(args);
             } else {
                 this._log('enter_selectTarget_noactive');
+            }
+
+            // Cache declared card type for preview and render it in the yellow area
+            if (args) {
+                const dType = (args.declared_type !== undefined && args.declared_type !== null)
+                    ? args.declared_type
+                    : args.declared_card;
+                if (dType !== undefined && dType !== null) this.currentDeclaredType = dType;
+                const previewType = (args && (args.declared_type !== undefined || args.declared_card !== undefined))
+                    ? (args.declared_type !== undefined ? args.declared_type : args.declared_card)
+                    : this.currentDeclaredType;
+                if (previewType !== undefined && previewType !== null) this.renderDeclaredPreview(previewType);
             }
         },
 
@@ -753,14 +992,57 @@ function (dojo, declare) {
             let prev = $(prevId);
             if (!prev) {
                 prev = dojo.create('div', { id: prevId, style: 'margin-top:8px; display:flex; align-items:center; gap:8px;' }, promptsDiv);
-                const card = dojo.create('div', { className: 'hc_card hc_face_down', style: 'width:36px;height:48px;border-width:1px;background-image:url('+ (typeof g_gamethemeurl!=='undefined'? g_gamethemeurl : '') + 'img/herding_cats_art/cardback.jpeg);background-size:cover;background-position:center;' }, prev);
+                const card = dojo.create('div', { id: 'hc_declared_preview_card', className: 'hc_card hc_face_down', style: 'width:36px;height:48px;border-width:1px;background-image:url('+ (typeof g_gamethemeurl!=='undefined'? g_gamethemeurl : '') + 'img/herding_cats_art/cardback.jpeg);background-size:cover;background-position:center;' }, prev);
+                dojo.attr(card, 'data-declared-type', declaredType);
+                // Hover handlers to show declared front face (not the real card)
+                dojo.connect(card, 'onmouseover', this, (e)=>{
+                    const t = parseInt(dojo.attr(card, 'data-declared-type'));
+                    this._hoverZoomShowType(t, e);
+                });
+                dojo.connect(card, 'onmousemove', this, (e)=>{ this._hoverZoomPosition(e); });
+                dojo.connect(card, 'onmouseout', this, ()=>{ this._hoverZoomHide(); });
                 // background-image is set by CSS class hc_face_down
                 const label = (this.cardTypeNames && this.cardTypeNames[declaredType]) ? this.cardTypeNames[declaredType] : declaredType;
                 dojo.create('span', { innerHTML: dojo.string.substitute(_('Declared as: ${type}'), { type: label }) }, prev);
             } else {
                 const label = (this.cardTypeNames && this.cardTypeNames[declaredType]) ? this.cardTypeNames[declaredType] : declaredType;
                 prev.querySelector('span').innerHTML = dojo.string.substitute(_('Declared as: ${type}'), { type: label });
+                const card = $('hc_declared_preview_card');
+                if (card) {
+                    dojo.attr(card, 'data-declared-type', declaredType);
+                    try { card.removeAttribute('title'); } catch(e) { try { dojo.attr(card, 'title', ''); } catch(_) {} }
+                }
             }
+        },
+
+        // Helper: compute full image URL for a given card type
+        _imageUrlForType: function(type) {
+            const map = {
+                1: 'img/herding_cats_art/kitten.jpeg',
+                2: 'img/herding_cats_art/showcat.jpeg',
+                3: 'img/herding_cats_art/alleycat.jpeg',
+                4: 'img/herding_cats_art/catnip.jpeg',
+                5: 'img/herding_cats_art/animalcontrol.jpeg',
+                6: 'img/herding_cats_art/laserpointer.jpeg'
+            };
+            const rel = map[type] || null;
+            if (!rel) return null;
+            return (typeof g_gamethemeurl!=='undefined'? g_gamethemeurl : '') + rel;
+        },
+
+        // Show hover zoom overlay for a specific declared type (face-up art of the declared identity)
+        _hoverZoomShowType: function(type, e) {
+            var zoom = $('hc_hover_zoom');
+            if (!zoom) return;
+            var url = this._imageUrlForType(type);
+            if (!url) return;
+            zoom.style.backgroundImage = 'url("' + url + '")';
+            var baseW = 72, baseH = 96;
+            var factor = 2.7;
+            zoom.style.width = Math.round(baseW * factor) + 'px';
+            zoom.style.height = Math.round(baseH * factor) + 'px';
+            zoom.style.display = 'block';
+            this._hoverZoomPosition(e);
         },
 
         showDeclarationDialog: function(cardId) {

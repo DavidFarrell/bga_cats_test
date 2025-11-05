@@ -73,13 +73,14 @@ class Game extends \Bga\GameFramework\Table
 
         // Initialize BGA Deck component (safe even if no real cards are used)
         try {
-            $this->cards = $this->getNew('module.common.deck');
+            $this->cards = self::getNew('module.common.deck');
             if ($this->cards) {
                 $this->cards->init('card');
             }
         } catch (\Throwable $e) {
             // Leave $cards null; code using it guards with fallbacks
             $this->cards = null;
+            error_log('[HC INIT] Deck module init failed: ' . $e->getMessage());
         }
 
         self::$CARD_TYPES = [
@@ -241,21 +242,45 @@ class Game extends \Bga\GameFramework\Table
      */
     public function upgradeTableDb($from_version)
     {
-//       if ($from_version <= 1404301345)
-//       {
-//            // ! important ! Use `DBPREFIX_<table_name>` for all tables
-//
-//            $sql = "ALTER TABLE `DBPREFIX_xxxxxxx` ....";
-//            $this->applyDbUpgradeToAllDB( $sql );
-//       }
-//
-//       if ($from_version <= 1405061421)
-//       {
-//            // ! important ! Use `DBPREFIX_<table_name>` for all tables
-//
-//            $sql = "CREATE TABLE `DBPREFIX_xxxxxxx` ....";
-//            $this->applyDbUpgradeToAllDB( $sql );
-//       }
+        // Ensure Deck table exists even on existing Studio DBs (heals tables created before dbmodel.sql had `card`).
+        // Important: always use DBPREFIX_<table_name> for all tables in migrations.
+        try {
+            $sql = "CREATE TABLE IF NOT EXISTS `DBPREFIX_card` (
+  `card_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `card_type` int(11) NOT NULL,
+  `card_type_arg` int(11) NOT NULL,
+  `card_location` varchar(16) NOT NULL,
+  `card_location_arg` int(11) NOT NULL,
+  PRIMARY KEY (`card_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+            $this->applyDbUpgradeToAllDB($sql);
+        } catch (\Throwable $e) {
+            // Log but do not break running games
+            error_log('[HC MIGRATION] Failed to ensure card table exists: ' . $e->getMessage());
+        }
+        // Optional: ensure pending_action exists as well (safe no-op if already created by dbmodel.sql)
+        try {
+            $sql2 = "CREATE TABLE IF NOT EXISTS `DBPREFIX_pending_action` (
+  `action_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `game_id` int(10) DEFAULT NULL,
+  `actor_player_id` int(10) DEFAULT NULL,
+  `declared_identity` int(11) DEFAULT NULL,
+  `played_card_id` int(10) DEFAULT NULL,
+  `target_player_id` int(10) DEFAULT NULL,
+  `target_zone` varchar(16) DEFAULT NULL,
+  `selected_card_id` int(10) DEFAULT NULL,
+  `challengers` varchar(255) DEFAULT NULL,
+  `intercept_player_id` int(10) DEFAULT NULL,
+  `intercept_zone` varchar(16) DEFAULT NULL,
+  `intercept_card_id` int(10) DEFAULT NULL,
+  `intercept_challengers` varchar(255) DEFAULT NULL,
+  `phase` int(11) DEFAULT NULL,
+  PRIMARY KEY (`action_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+            $this->applyDbUpgradeToAllDB($sql2);
+        } catch (\Throwable $e) {
+            error_log('[HC MIGRATION] Failed to ensure pending_action table exists: ' . $e->getMessage());
+        }
     }
 
     /*
@@ -304,6 +329,7 @@ class Game extends \Bga\GameFramework\Table
             }
             $result['herds'][$pid] = [ 'face_down' => $fd, 'face_up' => $fu ];
         }
+        // Discards: start empty. Removed-from-game cards remain unknown and are not shown in discards.
         $result['discards'] = [];
         foreach ($result['players'] as $pid => $_p) {
             $result['discards'][(int)$pid] = [];
@@ -319,6 +345,24 @@ class Game extends \Bga\GameFramework\Table
             $scores[(int)$pid] = (int)($row['score'] ?? 0);
         }
         $result['scores'] = $scores;
+
+        // Debug banner: report deck counts for current viewer (hand/removed/table/pile)
+        try {
+            $handDeckN = 0; $removedN = 0; $tableN = 0; $pileN = 0;
+            if (is_object($this->cards)) {
+                $handDeckN = count($this->cards->getCardsInLocation('hand', $current_player_id));
+                $removedN  = count($this->cards->getCardsInLocation('removed', $current_player_id));
+                $tableN    = count($this->cards->getCardsInLocation('table', $current_player_id));
+                $pileLoc   = 'pdeck_' . $current_player_id;
+                $pileN     = count($this->cards->getCardsInLocation($pileLoc));
+            }
+            $result['debug_banner'] = sprintf(
+                'Deck debug: hand=%d removed=%d table=%d pile=%d @%s',
+                (int)$handDeckN, (int)$removedN, (int)$tableN, (int)$pileN, date('H:i:s')
+            );
+        } catch (\Throwable $e) {
+            $result['debug_banner'] = 'Deck debug: unavailable';
+        }
 
         // Include final scoring payload during final presentation for reconnects
         $final = $this->globals->get('final_scoring');
@@ -459,18 +503,36 @@ class Game extends \Bga\GameFramework\Table
 
     private function getDummyHandFor(int $playerId, ?int $count = null): array
     {
-        // Provide N dummy cards with ids and types for UI selection
-        // Use stable default order matching the current UI expectation:
-        // [Kitten, Kitten, Show Cat, Alley Cat, Catnip, Animal Control, Laser Pointer]
+        // Randomized dummy hand (no Deck available):
+        // Build the per-player 9-card composition, shuffle with bga_rand for reproducibility,
+        // then take the first N as the starting hand. Use stable dummy ids for UI.
         $hand = [];
         $n = ($count === null) ? 7 : max(0, (int)$count);
         $base = 100 + ($playerId % 10) * 1000; // reduce cross-player collisions
-        $defaultOrder = [1, 1, 2, 3, 4, 5, 6];
-        for ($i = 0; $i < $n; $i++) {
-            $cardId = $base + $i;
-            $type = $defaultOrder[$i % count($defaultOrder)];
-            $hand[(string)$cardId] = [ 'id' => $cardId, 'type' => $type, 'location_arg' => ($i + 1) ];
+
+        // Personal deck composition (9 total): 3x1, 1x2, 2x3, 1x4, 1x5, 1x6
+        $deck = [];
+        for ($i = 0; $i < 3; $i++) $deck[] = 1; // Kitten
+        $deck[] = 2;                            // Show Cat
+        for ($i = 0; $i < 2; $i++) $deck[] = 3; // Alley Cat
+        $deck[] = 4;                            // Catnip
+        $deck[] = 5;                            // Animal Control
+        $deck[] = 6;                            // Laser Pointer
+
+        // Fisher–Yates shuffle using bga_rand (BGA-provided RNG)
+        for ($i = count($deck) - 1; $i > 0; $i--) {
+            $j = bga_rand(0, $i);
+            $tmp = $deck[$i];
+            $deck[$i] = $deck[$j];
+            $deck[$j] = $tmp;
         }
+
+        $handTypes = array_slice($deck, 0, min($n, count($deck)));
+        foreach ($handTypes as $idx => $ctype) {
+            $cardId = $base + $idx;
+            $hand[(string)$cardId] = [ 'id' => $cardId, 'type' => (int)$ctype, 'location_arg' => ($idx + 1) ];
+        }
+
         return $hand;
     }
 
@@ -764,6 +826,13 @@ class Game extends \Bga\GameFramework\Table
             }
         }
 
+        // Move the played card out of hand in real-deck mode to keep deck state consistent
+        try {
+            if (is_object($this->cards)) {
+                $this->cards->moveCard((int)$card_id, 'table', $player_id);
+            }
+        } catch (\Throwable $e) {}
+
         // Store pending declaration info for downstream states
         $this->setGameStateValue(self::G_PENDING_CARD, $card_id);
         $this->setGameStateValue(self::G_PENDING_DECL, $decl);
@@ -910,6 +979,8 @@ class Game extends \Bga\GameFramework\Table
                     'to_player_id' => $actor,
                     'card' => [ 'id' => $lpCardId, 'type' => $dtype ]
                 ]);
+                // Add the stolen card to the attacker's herd face-down (real identity)
+                $this->addHerdCard($actor, $lpCardId, $dtype, false);
                 // Stats: Catnip steal via intercept substitution
                 $this->incStat(1, 'cards_stolen_by_catnip', $actor);
                 $this->incStat(1, 'cards_lost_to_catnip', $defender);
@@ -2214,7 +2285,101 @@ class Game extends \Bga\GameFramework\Table
         // $this->initStat("table", "table_teststat1", 0);
         // $this->initStat("player", "player_teststat1", 0);
 
-        // TODO: Setup the initial game situation here.
+        // Build real per-player 9-card personal decks, shuffle, draw 7, remove 2
+        $initializedViaDeck = false;
+        try {
+            if (is_object($this->cards)) {
+                error_log('[HC SETUP] Deck component present, starting per-player deck build');
+                // Ensure deck table exists even if migrations didn't run
+                try {
+                    $sql = "CREATE TABLE IF NOT EXISTS `DBPREFIX_card` (
+  `card_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `card_type` int(11) NOT NULL,
+  `card_type_arg` int(11) NOT NULL,
+  `card_location` varchar(16) NOT NULL,
+  `card_location_arg` int(11) NOT NULL,
+  PRIMARY KEY (`card_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8";
+                    $this->applyDbUpgradeToAllDB($sql);
+                    error_log('[HC SETUP] Ensured card table exists');
+                } catch (\Throwable $e) {
+                    error_log('[HC SETUP] Failed to ensure card table: ' . $e->getMessage());
+                }
+                $this->cards->deleteCards();
+                foreach ($players as $player_id => $_player) {
+                    $pid = (int)$player_id;
+                    $pile = 'pdeck_' . $pid;
+                    // Create personal deck: 3x Kitten(1), 1x Show Cat(2), 2x Alley Cat(3), 1x Catnip(4), 1x Animal Control(5), 1x Laser Pointer(6)
+                    $defs = [
+                        ['type' => 1, 'type_arg' => 0, 'nbr' => 3],
+                        ['type' => 2, 'type_arg' => 0, 'nbr' => 1],
+                        ['type' => 3, 'type_arg' => 0, 'nbr' => 2],
+                        ['type' => 4, 'type_arg' => 0, 'nbr' => 1],
+                        ['type' => 5, 'type_arg' => 0, 'nbr' => 1],
+                        ['type' => 6, 'type_arg' => 0, 'nbr' => 1],
+                    ];
+                    // Create in a per-player pile, then shuffle that pile
+                    $this->cards->createCards($defs, $pile);
+                    $nPile = count($this->cards->getCardsInLocation($pile));
+                    error_log('[HC SETUP] Created personal pile for '.$pid.' with '.$nPile.' cards');
+                    $this->cards->shuffle($pile);
+                    // Draw 7 to that player's hand
+                    $this->cards->pickCardsForLocation(7, $pile, 'hand', $pid);
+                    $nHand = count($this->cards->getCardsInLocation('hand', $pid));
+                    error_log('[HC SETUP] Dealt hand for '.$pid.' now has '.$nHand.' cards');
+                    // Move remaining 2 to removed-from-game for this owner
+                    $this->cards->moveAllCardsInLocation($pile, 'removed', null, $pid);
+                    $nRemoved = count($this->cards->getCardsInLocation('removed', $pid));
+                    error_log('[HC SETUP] Moved remaining to removed for '.$pid.' now has '.$nRemoved.' cards');
+                }
+                // Initialize hand counts to 7 per player to match real hands
+                $counts = [];
+                foreach ($players as $player_id => $_player) { $counts[(int)$player_id] = 7; }
+                $this->globals->set('hand_counts', $counts);
+                $initializedViaDeck = true;
+                error_log('[HC SETUP] Deck initialization complete');
+            }
+        } catch (\Throwable $e) {
+            // Leave $initializedViaDeck = false; fallback below will generate hands
+            error_log('[HC SETUP] Deck path failed: '.$e->getMessage());
+        }
+
+        // Fallback initialization (no Deck module): generate randomized 7-card hands per player using composition
+        if (!$initializedViaDeck) {
+            $counts = [];
+            $orders = [];
+            foreach ($players as $player_id => $_player) {
+                $pid = (int)$player_id;
+                $counts[$pid] = 7;
+                // Build personal deck composition (9 cards)
+                $deck = [];
+                for ($i = 0; $i < 3; $i++) $deck[] = 1; // 3x Kitten
+                $deck[] = 2;            // 1x Show Cat
+                for ($i = 0; $i < 2; $i++) $deck[] = 3; // 2x Alley Cat
+                $deck[] = 4;            // 1x Catnip
+                $deck[] = 5;            // 1x Animal Control
+                $deck[] = 6;            // 1x Laser Pointer
+                // Shuffle using bga_rand for reproducibility
+                for ($i = count($deck) - 1; $i > 0; $i--) {
+                    $j = bga_rand(0, $i);
+                    $tmp = $deck[$i];
+                    $deck[$i] = $deck[$j];
+                    $deck[$j] = $tmp;
+                }
+                $handTypes = array_slice($deck, 0, 7);
+                // Persist hand order with stable dummy ids
+                $base = 100 + ($pid % 10) * 1000;
+                $pos = 1;
+                $norm = [];
+                foreach ($handTypes as $idx => $ctype) {
+                    $cid = $base + $idx;
+                    $norm[(string)$cid] = [ 'id' => $cid, 'type' => (int)$ctype, 'location_arg' => $pos++ ];
+                }
+                $orders[$pid] = $norm;
+            }
+            $this->globals->set('hand_counts', $counts);
+            $this->setHandOrders($orders);
+        }
 
         // Activate first player once everything has been initialized and ready.
         $this->activeNextPlayer();

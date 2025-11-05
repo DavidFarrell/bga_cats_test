@@ -16,7 +16,11 @@
       "mcp__playwright__browser_handle_dialog",
       "mcp__playwright__browser_take_screenshot",
       "mcp__playwright__browser_console_messages",
-      "mcp__playwright-ext__browser_click"
+      "mcp__playwright-ext__browser_click",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(git restore:*)",
+      "Bash(git commit:*)"
     ],
     "additionalDirectories": [
       "/Users/david/BGA_mount"

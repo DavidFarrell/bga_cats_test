@@ -41,8 +41,8 @@ $machinestates = [
     
     10 => GameStateBuilder::create()
         ->name('awaitDeclaration')
-        ->description(clienttranslate('${actplayer} must declare a card and play it'))
-        ->descriptionmyturn(clienttranslate('${you} must declare a card identity and play it'))
+        ->description(clienttranslate('${actplayer} must declare a card and play it.'))
+        ->descriptionmyturn(clienttranslate('${you} must declare a card identity and play it.'))
         ->type(StateType::ACTIVE_PLAYER)
         ->args('argAwaitDeclaration')
          ->possibleactions([

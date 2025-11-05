@@ -669,6 +669,30 @@
 }
 
 /* ======================
+   HOVER ZOOM PREVIEW
+   ====================== */
+
+.hc_zoom_preview {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 216px; /* default; updated by JS */
+    height: 288px; /* default; updated by JS */
+    background: #fff center/cover no-repeat;
+    border: 2px solid #333;
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+    z-index: 2000;
+    display: none;
+    pointer-events: none;
+}
+
+/* Disable hover zoom for touch devices */
+@media (pointer: coarse) {
+    .hc_zoom_preview { display: none !important; }
+}
+
+/* ======================
    ACCESSIBILITY
    ====================== */
 
